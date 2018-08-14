@@ -16,6 +16,15 @@ extern bool in_cs ();
 // Wait until all readers have entered a quiescent state.
 extern void sync ();
 
+struct finalizable
+{
+  finalizable *fin_next;
+
+  virtual ~finalizable () {}
+};
+
+extern void finalize (finalizable *__finp);
+
 }
 
 #endif

@@ -102,10 +102,19 @@ struct registry
 
 static registry global_reg;
 
+#ifndef XRCU_MAX_FINS
+static const unsigned int MAX_FINS = 1000;
+#else
+static const unsigned int MAX_FINS = XRCU_MAX_FINS;
+#endif
+
 struct tl_data : public td_link
 {
-  bool init = false;
+  bool init;
+  bool must_flush;
+  unsigned int n_fins;
   std::atomic_uintptr_t counter;
+  finalizable *fin_objs;
 
   uintptr_t get_ctr () const
     {
@@ -123,10 +132,53 @@ struct tl_data : public td_link
         return (rd_old);
     }
 
+  bool in_cs () const
+    {
+      return ((this->get_ctr () & GP_CTR_NEST_MASK) != 0);
+    }
+
+  void flush_all ()
+    {
+      sync ();
+
+      for (auto f = this->fin_objs; f != nullptr; )
+        {
+          auto next = f->fin_next;
+          delete f;
+          f = next;
+        }
+
+      this->fin_objs = nullptr;
+      this->n_fins = 0;
+    }
+
+  void flush_finalizers ()
+    {
+      if (this->in_cs ())
+        {
+          this->must_flush = true;
+          return;
+        }
+
+      this->flush_all ();
+    }
+
+  void finalize (finalizable *finp)
+    {
+      finp->fin_next = this->fin_objs;
+      this->fin_objs = finp;
+
+      if (++this->n_fins >= MAX_FINS)
+        this->flush_finalizers ();
+    }
+
   ~tl_data ()
     {
       if (!this->init)
         return;
+
+      this->counter.store (0, std::memory_order_release);
+      this->flush_all ();
 
       global_reg.lock ();
       this->del ();
@@ -165,7 +217,7 @@ void exit_cs ()
 
 bool in_cs ()
 {
-  return ((local_data()->get_ctr () & GP_CTR_NEST_MASK) != 0);
+  return (local_data()->in_cs ());
 }
 
 void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
