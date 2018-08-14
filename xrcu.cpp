@@ -266,7 +266,10 @@ void registry::sync ()
   this->lock ();
 
   if (this->root.empty_p ())
-    return;
+    {
+      this->unlock ();
+      return;
+    }
 
   td_link out, qs;
   qs.init_head ();
