@@ -25,6 +25,19 @@ struct finalizable
 
 extern void finalize (finalizable *__finp);
 
+struct cs_guard
+{
+  cs_guard ()
+    {
+      enter_cs ();
+    }
+
+  ~cs_guard ()
+    {
+      exit_cs ();
+    }
+};
+
 }
 
 #endif
