@@ -32,7 +32,7 @@ stack_base::stack_base ()
   sb->size.store (0, std::memory_order_relaxed);
 }
 
-stack_node_base* stack_base::root ()
+stack_node_base* stack_base::root () const
 {
   return (get_impl(this->buf)->root.load (std::memory_order_relaxed));
 }

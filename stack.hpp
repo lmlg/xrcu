@@ -23,11 +23,12 @@ struct stack_node : public stack_node_base
 
 struct stack_base
 {
-  alignas (64) char buf[64];
+  alignas (alignof (size_t)) char buf[64];
 
   stack_base ();
 
-  stack_node_base* root ();
+  stack_node_base* root () const;
+
   void push_node (stack_node_base *nodep);
   stack_node_base* pop_node ();
   bool empty () const;
@@ -98,6 +99,8 @@ struct stack : public stack_base
 
   struct const_iterator : public stack_iter_base
     {
+      const_iterator (stack_node_base *rp = nullptr) : stack_iter_base (rp) {}
+
       T operator* () const
         {
           return (((const node_type *)this->runp)->value);
@@ -122,6 +125,16 @@ struct stack : public stack_base
   const_iterator cend () const
     {
       return (const_iterator ());
+    }
+
+  const_iterator begin () const
+    {
+      return (this->cbegin ());
+    }
+
+  const_iterator end () const
+    {
+      return (this->cend ());
     }
 };
 
