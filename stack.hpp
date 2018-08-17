@@ -94,6 +94,17 @@ struct stack : public stack_base
       return (ret);
     }
 
+  T top ()
+    {
+      cs_guard g;
+      node_type *node = (node_type *)this->root ();
+
+      if (!node)
+        throw std::runtime_error ("stack<T>::top: stack is empty");
+
+      return (node->value);
+    }
+
   struct iterator : public stack_iter_base
     {
       iterator (stack_node_base *rp = nullptr) : stack_iter_base (rp) {}
