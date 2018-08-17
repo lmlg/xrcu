@@ -66,6 +66,7 @@ struct registry
   std::atomic_uintptr_t counter;
   td_link root;
   std::mutex mtx;
+  std::mutex gp_mtx;
 
   static const unsigned int QS_ATTEMPTS = 1000;
 
@@ -267,11 +268,13 @@ void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
 
 void registry::sync ()
 {
+  this->gp_mtx.lock ();
   this->lock ();
 
   if (this->root.empty_p ())
     {
       this->unlock ();
+      this->gp_mtx.unlock ();
       return;
     }
 
@@ -283,16 +286,21 @@ void registry::sync ()
   poll_readers (&this->root, &out, &qs);
 
   this->counter.store (this->get_ctr () ^ GP_CTR_PHASE,
-                       std::memory_order_release);
+                       std::memory_order_relaxed);
 
   poll_readers (&out, nullptr, &qs);
   qs.splice (&this->root);
   this->unlock ();
+  this->gp_mtx.unlock ();
 }
 
-void sync ()
+bool sync ()
 {
+  if (in_cs ())
+    return (false);
+
   global_reg.sync ();
+  return (true);
 }
 
 void finalize (finalizable *finp)
