@@ -5,6 +5,11 @@
 #include <cstddef>
 #include <stdexcept>
 
+namespace std
+{
+  struct forward_iterator_tag;
+}
+
 namespace xrcu
 {
 
@@ -26,6 +31,7 @@ struct stack_base
   alignas (alignof (size_t)) char buf[64];
 
   stack_base ();
+  void destroy (void (*) (stack_node_base *));
 
   stack_node_base* root () const;
 
@@ -38,8 +44,9 @@ struct stack_base
 struct stack_iter_base : public cs_guard
 {
   stack_node_base *runp;
+  typedef std::forward_iterator_tag iterator_category;
 
-  stack_iter_base (stack_node_base *rp = nullptr) : runp (rp) {}
+  stack_iter_base (stack_node_base *rp) : runp (rp) {}
 
   stack_iter_base& operator++ ()
     {
@@ -77,7 +84,7 @@ struct stack : public stack_base
   T pop ()
     {
       cs_guard g;
-      node_type node = this->pop_node ();
+      node_type *node = (node_type *)this->pop_node ();
 
       if (!node)
         throw std::runtime_error ("stack<T>::pop: stack is empty");
@@ -135,6 +142,17 @@ struct stack : public stack_base
   const_iterator end () const
     {
       return (this->cend ());
+    }
+
+  static void
+  fini_node (stack_node_base *ptr)
+    {
+      delete (node_type *)ptr;
+    }
+
+  ~stack ()
+    {
+      this->destroy (fini_node);
     }
 };
 

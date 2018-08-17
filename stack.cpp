@@ -82,4 +82,16 @@ size_t stack_base::size () const
   return (sb->size.load (std::memory_order_relaxed));
 }
 
+void stack_base::destroy (void (*fct) (stack_node_base *))
+{
+  auto runp = this->root ();
+  while (runp != nullptr)
+    {
+      auto next = runp->next;
+      fct (runp), runp = next;
+    }
+
+  get_impl(this->buf)->root.store (nullptr, std::memory_order_relaxed);
+}
+
 }

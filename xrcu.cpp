@@ -295,5 +295,10 @@ void sync ()
   global_reg.sync ();
 }
 
+void finalize (finalizable *finp)
+{
+  local_data()->finalize (finp);
+}
+
 } // namespace rcu
 
