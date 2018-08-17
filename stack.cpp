@@ -10,9 +10,8 @@ struct sb_impl
   std::atomic<stack_node_base *> root;
 };
 
-static_assert (sizeof (sb_impl) <= sizeof (((stack_base *)nullptr)->buf) &&
-  (alignof (sb_impl) % alignof (((stack_base *)nullptr))->buf) == 0,
-  "stack_base opaque buffer has the wrong size or alignment");
+static_assert (sizeof (sb_impl) <= sizeof (((stack_base *)nullptr)->buf),
+  "stack_base opaque buffer is too small");
 
 static inline sb_impl*
 get_impl (void *buf)
@@ -26,9 +25,23 @@ get_impl (const void *buf)
   return ((const sb_impl *)buf);
 }
 
+stack_base::stack_base ()
+{
+  auto sb = get_impl (this->buf);
+  sb->root.store (nullptr, std::memory_order_relaxed);
+  sb->size.store (0, std::memory_order_relaxed);
+}
+
+stack_node_base* stack_base::root ()
+{
+  return (get_impl(this->buf)->root.load (std::memory_order_relaxed));
+}
+
 void stack_base::push_node (stack_node_base *nodep)
 {
-  for (auto sb = get_impl (this->buf) ; ; )
+  auto sb = get_impl (this->buf);
+
+  while (true)
     {
       nodep->next = sb->root.load (std::memory_order_relaxed);
       if (sb->root.compare_exchange_weak (nodep->next, nodep,

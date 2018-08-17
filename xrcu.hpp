@@ -19,7 +19,7 @@ extern void sync ();
 // Base type for finalizable objects.
 struct finalizable
 {
-  finalizable *fin_next;
+  finalizable *fin_next = nullptr;
 
   virtual ~finalizable () {}
 };

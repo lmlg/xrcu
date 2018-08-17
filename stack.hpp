@@ -3,6 +3,7 @@
 
 #include "xrcu.hpp"
 #include <cstddef>
+#include <stdexcept>
 
 namespace xrcu
 {
@@ -24,10 +25,41 @@ struct stack_base
 {
   alignas (64) char buf[64];
 
+  stack_base ();
+
+  stack_node_base* root ();
   void push_node (stack_node_base *nodep);
   stack_node_base* pop_node ();
   bool empty () const;
   size_t size () const;
+};
+
+struct stack_iter_base : public cs_guard
+{
+  stack_node_base *runp;
+
+  stack_iter_base (stack_node_base *rp = nullptr) : runp (rp) {}
+
+  stack_iter_base& operator++ ()
+    {
+      this->runp = this->runp->next;
+    }
+
+  stack_iter_base operator++ (int)
+    {
+      stack_iter_base tmp (this->runp);
+      return (++tmp);
+    }
+
+  bool operator== (const stack_iter_base& right) const
+    {
+      return (this->runp == right.runp);
+    }
+
+  bool operator!= (const stack_iter_base& right) const
+    {
+      return (this->runp != right.runp);
+    }
 };
 
 template <class T>
@@ -50,8 +82,46 @@ struct stack : public stack_base
         throw std::runtime_error ("stack<T>::pop: stack is empty");
 
       T ret = node->value;
-      delete node;
+      finalize (node);
       return (ret);
+    }
+
+  struct iterator : public stack_iter_base
+    {
+      iterator (stack_node_base *rp = nullptr) : stack_iter_base (rp) {}
+
+      T& operator* ()
+        {
+          return (((node_type *)this->runp)->value);
+        }
+    };
+
+  struct const_iterator : public stack_iter_base
+    {
+      T operator* () const
+        {
+          return (((const node_type *)this->runp)->value);
+        }
+    };
+
+  iterator begin ()
+    {
+      return (iterator (this->root ()));
+    }
+
+  iterator end ()
+    {
+      return (iterator ());
+    }
+
+  const_iterator cbegin () const
+    {
+      return (const_iterator (this->root ()));
+    }
+
+  const_iterator cend () const
+    {
+      return (const_iterator ());
     }
 };
 
