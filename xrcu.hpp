@@ -16,6 +16,7 @@ extern bool in_cs ();
 // Wait until all readers have entered a quiescent state.
 extern void sync ();
 
+// Base type for finalizable objects.
 struct finalizable
 {
   finalizable *fin_next;
@@ -23,6 +24,7 @@ struct finalizable
   virtual ~finalizable () {}
 };
 
+// Add FINP to the list of objects to be finalized after a grace period.
 extern void finalize (finalizable *__finp);
 
 struct cs_guard

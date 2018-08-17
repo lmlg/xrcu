@@ -53,6 +53,7 @@ static const uintptr_t GP_CNT = 1;
 static const uintptr_t GP_CTR_PHASE = ((uintptr_t)1 << (sizeof (void *) << 2));
 static const uintptr_t GP_CTR_NEST_MASK = GP_CTR_PHASE - 1;
 
+// Possible states for a reader thread.
 enum
 {
   rd_active,
@@ -101,6 +102,8 @@ struct registry
 };
 
 static registry global_reg;
+
+// Maximum number of pending finalizers before flushing.
 
 #ifndef XRCU_MAX_FINS
 static const unsigned int MAX_FINS = 1000;
@@ -178,11 +181,12 @@ struct tl_data : public td_link
         return;
 
       this->counter.store (0, std::memory_order_release);
-      this->flush_all ();
 
       global_reg.lock ();
       this->del ();
       global_reg.unlock ();
+
+      this->flush_all ();
     }
 };
 
