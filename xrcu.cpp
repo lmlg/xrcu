@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <iostream>
 
 namespace xrcu
 {
@@ -191,14 +192,17 @@ struct tl_data : public td_link
     }
 };
 
-static thread_local tl_data tldata;
+static thread_local tl_data tldata {};
 
 static inline tl_data*
 local_data ()
 {
   auto self = &tldata;
   if (!self->init)
-    global_reg.add_tdata (self);
+    {
+      global_reg.add_tdata (self);
+      self->init = true;
+    }
 
   return (self);
 }
@@ -229,7 +233,7 @@ void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
 {
   for (unsigned int loops = 0 ; ; ++loops)
     {
-      td_link *next, *runp = readers;
+      td_link *next, *runp = readers->next;
       for (; runp != readers; runp = next)
         {
           next = runp->next;
