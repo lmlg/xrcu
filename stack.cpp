@@ -4,6 +4,9 @@
 namespace xrcu
 {
 
+namespace detail
+{
+
 struct sb_impl
 {
   std::atomic<size_t> size;
@@ -94,4 +97,5 @@ void stack_base::destroy (void (*fct) (stack_node_base *))
   get_impl(this->buf)->root.store (nullptr, std::memory_order_relaxed);
 }
 
-}
+} } // namespaces
+

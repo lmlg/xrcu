@@ -50,9 +50,10 @@ struct td_link
     }
 };
 
-static const uintptr_t GP_CNT = 1;
-static const uintptr_t GP_CTR_PHASE = ((uintptr_t)1 << (sizeof (void *) << 2));
-static const uintptr_t GP_CTR_NEST_MASK = GP_CTR_PHASE - 1;
+static const uintptr_t GP_PHASE_BIT =
+  (uintptr_t)1 << (sizeof (uintptr_t) * 8 - 1);
+
+static const uintptr_t GP_NEST_MASK = GP_PHASE_BIT - 1;
 
 // Possible states for a reader thread.
 enum
@@ -71,7 +72,7 @@ struct registry
 
   static const unsigned int QS_ATTEMPTS = 1000;
 
-  registry () : counter (GP_CNT)
+  registry () : counter (1)
     {
       this->root.init_head ();
     }
@@ -129,9 +130,9 @@ struct tl_data : public td_link
   int state () const
     {
       auto val = this->counter.load (std::memory_order_acquire);
-      if (!(val & GP_CTR_NEST_MASK))
+      if (!(val & GP_NEST_MASK))
         return (rd_inactive);
-      else if (!((val ^ global_reg.get_ctr ()) & GP_CTR_PHASE))
+      else if (!((val ^ global_reg.get_ctr ()) & GP_PHASE_BIT))
         return (rd_active);
       else
         return (rd_old);
@@ -139,7 +140,7 @@ struct tl_data : public td_link
 
   bool in_cs () const
     {
-      return ((this->get_ctr () & GP_CTR_NEST_MASK) != 0);
+      return ((this->get_ctr () & GP_NEST_MASK) != 0);
     }
 
   void flush_all ()
@@ -212,7 +213,7 @@ void enter_cs ()
   auto self = local_data ();
   std::atomic_signal_fence (std::memory_order_acq_rel);
   auto val = self->get_ctr ();
-  val = (val & GP_CTR_NEST_MASK) == 0 ? global_reg.get_ctr () : val + GP_CNT;
+  val = (val & GP_NEST_MASK) == 0 ? global_reg.get_ctr () : val + 1;
   self->counter.store (val, std::memory_order_release);
 }
 
@@ -220,7 +221,7 @@ void exit_cs ()
 {
   auto self = local_data ();
   auto val = self->get_ctr ();
-  self->counter.store (val - GP_CNT, std::memory_order_release);
+  self->counter.store (val - 1, std::memory_order_release);
   std::atomic_signal_fence (std::memory_order_acq_rel);
 }
 
@@ -289,7 +290,7 @@ void registry::sync ()
   std::atomic_thread_fence (std::memory_order_acq_rel);
   poll_readers (&this->root, &out, &qs);
 
-  this->counter.store (this->get_ctr () ^ GP_CTR_PHASE,
+  this->counter.store (this->get_ctr () ^ GP_PHASE_BIT,
                        std::memory_order_relaxed);
 
   poll_readers (&out, nullptr, &qs);

@@ -13,6 +13,9 @@ namespace std
 namespace xrcu
 {
 
+namespace detail
+{
+
 struct stack_node_base : public finalizable
 {
   stack_node_base *next;
@@ -70,21 +73,25 @@ struct stack_iter_base : public cs_guard
     }
 };
 
+} // namespace detail.
+
 template <class T>
-struct stack : public stack_base
+struct stack
 {
-  typedef stack_node<T> node_type;
+  detail::stack_base stkbase;
+  typedef detail::stack_node<T> node_type;
+
+  stack () : stkbase () {}
 
   void push (const T& value)
     {
-      node_type *nodep = new node_type (value);
-      this->push_node (nodep);
+      this->stkbase.push_node (new node_type (value));
     }
 
   T pop ()
     {
       cs_guard g;
-      node_type *node = (node_type *)this->pop_node ();
+      auto node = (node_type *)this->stkbase.pop_node ();
 
       if (!node)
         throw std::runtime_error ("stack<T>::pop: stack is empty");
@@ -97,7 +104,7 @@ struct stack : public stack_base
   T top ()
     {
       cs_guard g;
-      node_type *node = (node_type *)this->root ();
+      auto node = (node_type *)this->stkbase.root ();
 
       if (!node)
         throw std::runtime_error ("stack<T>::top: stack is empty");
@@ -105,9 +112,10 @@ struct stack : public stack_base
       return (node->value);
     }
 
-  struct iterator : public stack_iter_base
+  struct iterator : public detail::stack_iter_base
     {
-      iterator (stack_node_base *rp = nullptr) : stack_iter_base (rp) {}
+      iterator (detail::stack_node_base *rp = nullptr) :
+        detail::stack_iter_base (rp) {}
 
       T& operator* ()
         {
@@ -115,9 +123,10 @@ struct stack : public stack_base
         }
     };
 
-  struct const_iterator : public stack_iter_base
+  struct const_iterator : public detail::stack_iter_base
     {
-      const_iterator (stack_node_base *rp = nullptr) : stack_iter_base (rp) {}
+      const_iterator (detail::stack_node_base *rp = nullptr) :
+        detail::stack_iter_base (rp) {}
 
       T operator* () const
         {
@@ -127,7 +136,7 @@ struct stack : public stack_base
 
   iterator begin ()
     {
-      return (iterator (this->root ()));
+      return (iterator (this->stkbase.root ()));
     }
 
   iterator end ()
@@ -137,7 +146,7 @@ struct stack : public stack_base
 
   const_iterator cbegin () const
     {
-      return (const_iterator (this->root ()));
+      return (const_iterator (this->stkbase.root ()));
     }
 
   const_iterator cend () const
@@ -156,14 +165,14 @@ struct stack : public stack_base
     }
 
   static void
-  fini_node (stack_node_base *ptr)
+  fini_node (detail::stack_node_base *ptr)
     {
       delete (node_type *)ptr;
     }
 
   ~stack ()
     {
-      this->destroy (fini_node);
+      this->stkbase.destroy (fini_node);
     }
 };
 
