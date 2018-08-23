@@ -67,7 +67,7 @@ struct registry
 {
   std::atomic_uintptr_t counter;
   td_link root;
-  std::mutex mtx;
+  std::mutex td_mtx;
   std::mutex gp_mtx;
 
   static const unsigned int QS_ATTEMPTS = 1000;
@@ -77,21 +77,11 @@ struct registry
       this->root.init_head ();
     }
 
-  void lock ()
-    {
-      this->mtx.lock ();
-    }
-
-  void unlock ()
-    {
-      this->mtx.unlock ();
-    }
-
   void add_tdata (td_link *lp)
     {
-      this->lock ();
+      this->td_mtx.lock ();
       lp->add (&this->root);
-      this->unlock ();
+      this->td_mtx.unlock ();
     }
 
   uintptr_t get_ctr () const
@@ -185,11 +175,12 @@ struct tl_data : public td_link
 
       this->counter.store (0, std::memory_order_release);
 
-      global_reg.lock ();
-      this->del ();
-      global_reg.unlock ();
+      if (this->n_fins > 0)
+        this->flush_all ();
 
-      this->flush_all ();
+      global_reg.td_mtx.lock ();
+      this->del ();
+      global_reg.td_mtx.unlock ();
     }
 };
 
@@ -262,23 +253,23 @@ void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
       if (readers->empty_p ())
         break;
 
-      this->unlock ();
+      this->td_mtx.lock ();
       if (loops < QS_ATTEMPTS)
         std::this_thread::yield ();
       else
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
-      this->lock ();
+      this->td_mtx.unlock ();
     }
 }
 
 void registry::sync ()
 {
   this->gp_mtx.lock ();
-  this->lock ();
+  this->td_mtx.lock ();
 
   if (this->root.empty_p ())
     {
-      this->unlock ();
+      this->td_mtx.unlock ();
       this->gp_mtx.unlock ();
       return;
     }
@@ -295,7 +286,7 @@ void registry::sync ()
 
   poll_readers (&out, nullptr, &qs);
   qs.splice (&this->root);
-  this->unlock ();
+  this->td_mtx.unlock ();
   this->gp_mtx.unlock ();
 }
 
