@@ -19,6 +19,7 @@ namespace detail
 struct stack_node_base : public finalizable
 {
   stack_node_base *next;
+  size_t size;
 };
 
 template <class T>
@@ -162,6 +163,11 @@ struct stack
   const_iterator end () const
     {
       return (this->cend ());
+    }
+
+  size_t size () const
+    {
+      return (this->stkbase.size ());
     }
 
   static void
