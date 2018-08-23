@@ -4,6 +4,7 @@
 #include "xrcu.hpp"
 #include <cstddef>
 #include <stdexcept>
+#include <utility>
 
 namespace std
 {
@@ -28,6 +29,9 @@ struct stack_node : public stack_node_base
   T value;
 
   stack_node (const T& v) : value (v) {}
+
+  template <class ...Args>
+  stack_node (Args&&... args) : value (std::forward<Args>(args)...) {}
 };
 
 struct stack_base
@@ -87,6 +91,12 @@ struct stack
   void push (const T& value)
     {
       this->stkbase.push_node (new node_type (value));
+    }
+
+  template <class ...Args>
+  void emplace (Args&& ...args)
+    {
+      this->stkbase.push_node (new node_type (args...));
     }
 
   T pop ()
@@ -182,6 +192,6 @@ struct stack
     }
 };
 
-}
+} // namespace xrcu
 
 #endif
