@@ -68,8 +68,7 @@ stack_node_base* stack_base::pop_node ()
 
 bool stack_base::empty () const
 {
-  auto sb = get_impl (this->buf);
-  return (sb->root.load (std::memory_order_relaxed) == nullptr);
+  return (get_impl(this->buf)->load (std::memory_order_relaxed) == nullptr);
 }
 
 size_t stack_base::size () const
