@@ -47,6 +47,8 @@ struct stack_base
   stack_node_base* pop_node ();
   bool empty () const;
   size_t size () const;
+
+  void swap (stack_base& right);
 };
 
 struct stack_iter_base : public cs_guard
@@ -180,6 +182,14 @@ struct stack
       return (this->stkbase.size ());
     }
 
+  void swap (stack<T>& right)
+    {
+      if (this == &right)
+        return;
+
+      this->stkbase.swap (right.stkbase);
+    }
+
   static void
   fini_node (detail::stack_node_base *ptr)
     {
@@ -193,5 +203,16 @@ struct stack
 };
 
 } // namespace xrcu
+
+namespace std
+{
+
+template <class T>
+void swap (xrcu::stack<T>& left, xrcu::stack<T>& right)
+{
+  return (left.swap (right));
+}
+
+} // namespace std
 
 #endif
