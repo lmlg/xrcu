@@ -197,14 +197,14 @@ struct stack
     }
 
   static void
-  fini_node (detail::stack_node_base *ptr)
+  _Fini (detail::stack_node_base *ptr)
     {
       delete (node_type *)ptr;
     }
 
   ~stack ()
     {
-      this->stkbase.destroy (fini_node);
+      this->stkbase.destroy (_Fini);
     }
 };
 
