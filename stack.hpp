@@ -17,18 +17,23 @@ namespace xrcu
 namespace detail
 {
 
-struct stack_node_base : public finalizable
+struct stack_node_base
 {
   stack_node_base *next;
   size_t size;
 };
 
 template <class T>
-struct stack_node : public stack_node_base
+struct stack_node : public stack_node_base, finalizable
 {
   T value;
 
   stack_node (const T& v) : value (v) {}
+
+  void safe_destroy ()
+    {
+      delete this;
+    }
 
   template <class ...Args>
   stack_node (Args&&... args) : value (std::forward<Args>(args)...) {}
@@ -61,6 +66,7 @@ struct stack_iter_base : public cs_guard
   stack_iter_base& operator++ ()
     {
       this->runp = this->runp->next;
+      return (*this);
     }
 
   stack_iter_base operator++ (int)

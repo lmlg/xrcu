@@ -140,7 +140,7 @@ struct tl_data : public td_link
       for (auto f = this->fin_objs; f != nullptr; )
         {
           auto next = f->fin_next;
-          delete f;
+          f->safe_destroy ();
           f = next;
         }
 
@@ -151,12 +151,9 @@ struct tl_data : public td_link
   void flush_finalizers ()
     {
       if (this->in_cs ())
-        {
-          this->must_flush = true;
-          return;
-        }
-
-      this->flush_all ();
+        this->must_flush = true;
+      else
+        this->flush_all ();
     }
 
   void finalize (finalizable *finp)
@@ -214,6 +211,9 @@ void exit_cs ()
   auto val = self->get_ctr ();
   self->counter.store (val - 1, std::memory_order_release);
   std::atomic_signal_fence (std::memory_order_acq_rel);
+
+  if (self->must_flush && !self->in_cs ())
+    self->flush_all ();
 }
 
 bool in_cs ()
@@ -253,12 +253,12 @@ void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
       if (readers->empty_p ())
         break;
 
-      this->td_mtx.lock ();
+      this->td_mtx.unlock ();
       if (loops < QS_ATTEMPTS)
         std::this_thread::yield ();
       else
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
-      this->td_mtx.unlock ();
+      this->td_mtx.lock ();
     }
 }
 

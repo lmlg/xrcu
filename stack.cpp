@@ -38,6 +38,8 @@ stack_node_base* stack_base::root () const
   return (get_impl(this->buf)->root.load (std::memory_order_relaxed));
 }
 
+static stack_node_base* const NODE_SPIN = (stack_node_base *)1;
+
 void stack_base::push_node (stack_node_base *nodep)
 {
   auto sb = get_impl (this->buf);
@@ -45,7 +47,7 @@ void stack_base::push_node (stack_node_base *nodep)
   while (true)
     {
       nodep->next = sb->root.load (std::memory_order_relaxed);
-      if (nodep->next == (stack_node_base *)1)
+      if (nodep->next == NODE_SPIN)
         {
           std::atomic_thread_fence (std::memory_order_acquire);
           continue;
@@ -66,7 +68,7 @@ stack_node_base* stack_base::pop_node ()
   for (auto sb = get_impl (this->buf) ; ; )
     {
       auto np = sb->root.load (std::memory_order_relaxed);
-      if (np == (stack_node_base *)1)
+      if (np == NODE_SPIN)
         {
           std::atomic_thread_fence (std::memory_order_acquire);
           continue;
@@ -80,7 +82,7 @@ stack_node_base* stack_base::pop_node ()
 
 bool stack_base::empty () const
 {
-  return (get_impl(this->buf)->load (std::memory_order_relaxed) == nullptr);
+  return (this->root () == nullptr);
 }
 
 size_t stack_base::size () const
@@ -94,8 +96,8 @@ void stack_base::swap (stack_base& right)
   auto lp = get_impl (this->buf);
   auto rp = get_impl (right.buf);
 
-  auto ln = lp->root.exchange ((stack_node_base *)1);
-  auto rn = rp->root.exchange ((stack_node_base *)1);
+  auto ln = lp->root.exchange (NODE_SPIN, std::memory_order_relaxed);
+  auto rn = lp->root.exchange (NODE_SPIN, std::memory_order_relaxed);
 
   lp->root.store (rn, std::memory_order_release);
   rp->root.store (ln, std::memory_order_release);

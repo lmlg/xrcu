@@ -22,6 +22,8 @@ struct finalizable
 {
   finalizable *fin_next = nullptr;
 
+  virtual void safe_destroy () {}
+
   virtual ~finalizable () {}
 };
 
