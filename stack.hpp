@@ -123,16 +123,6 @@ struct stack
           this->sb.reset (nullptr, 0);
         }
 
-      void push (detail::stack_node_base *nodep)
-        {
-          this->sb.push_node (nodep);
-        }
-
-      detail::stack_node_base* pop ()
-        {
-          return (this->sb.pop_node ());
-        }
-
       static void
       fini (detail::stack_node_base *nodep)
         {
@@ -140,11 +130,6 @@ struct stack
         }
 
       void safe_destroy ()
-        {
-          delete this;
-        }
-
-      ~_Stkbase ()
         {
           this->sb.destroy (fini);
         }
@@ -249,19 +234,19 @@ struct stack
 
   void push (const T& value)
     {
-      this->_Base()->push (new node_type (value));
+      this->_Base()->sb.push_node (new node_type (value));
     }
 
   template <class ...Args>
   void emplace (Args&& ...args)
     {
-      this->base->push (new node_type (args...));
+      this->_Base()->sb.push_node (new node_type (args...));
     }
 
   T pop ()
     {
       cs_guard g;
-      auto node = (node_type *)this->_Base()->pop ();
+      auto node = (node_type *)this->_Base()->sb.pop_node ();
 
       if (!node)
         throw std::runtime_error ("stack<T>::pop: stack is empty");
@@ -363,7 +348,12 @@ struct stack
 
   ~stack ()
     {
-      delete this->_Base ();
+      auto tmp = this->_Base ();
+      if (!tmp)
+        return;
+
+      tmp->safe_destroy ();
+      delete tmp;
       this->basep.store (nullptr, std::memory_order_relaxed);
     }
 };
