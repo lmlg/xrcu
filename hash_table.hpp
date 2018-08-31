@@ -240,8 +240,6 @@ struct hash_table
   HashFn hashfn;
   float mv_ratio;
   std::atomic<intptr_t> grow_limit;
-  key_traits k_traits;
-  val_traits v_traits;
   detail::ht_lock lock;
   std::atomic<size_t> nelems;
 
@@ -310,7 +308,7 @@ struct hash_table
 
       if (k == key_traits::FREE)
         return (put_p ? (empty = true, vidx) : (size_t)-1);
-      else if (this->eqfn (this->k_traits.get (k), key))
+      else if (this->eqfn (key_traits().get (k), key))
         return (vidx);
 
       for (size_t initial = idx, sec = detail::secondary_hash (code) ; ; )
@@ -326,7 +324,7 @@ struct hash_table
 
           if (k == key_traits::FREE)
             return (put_p ? (empty = true, vidx) : (size_t)-1);
-          else if (this->eqfn (this->k_traits.get (k), key))
+          else if (this->eqfn (key_traits().get (k), key))
             return (vidx);
         }
     }
@@ -339,7 +337,7 @@ struct hash_table
 
   size_t _Gprobe (uintptr_t key, detail::ht_vector *vp)
     {
-      size_t code = this->hashfn (this->k_traits.get (key));
+      size_t code = this->hashfn (key_traits().get (key));
       size_t entries = vp->entries ();
       size_t idx = code % entries;
       size_t vidx = detail::table_idx (idx);
@@ -401,7 +399,7 @@ struct hash_table
         }
     }
 
-  ValT get (const KeyT& key, const ValT& dfl = ValT ()) const
+  ValT find (const KeyT& key, const ValT& dfl = ValT ()) const
     {
       cs_guard g;
 
@@ -414,24 +412,23 @@ struct hash_table
           else
             {
               uintptr_t val = vp->data[idx + 1] & ~val_traits::XBIT;
-              return (val == val_traits::DELT ?
-                dfl : this->v_traits.get (val));
+              return (val == val_traits::DELT ? dfl : val_traits().get (val));
             }
         }
     }
 
   bool insert (const KeyT& key, const ValT& val)
     {
-      uintptr_t k = this->k_traits.make (key);
+      uintptr_t k = key_traits().make (key);
       uintptr_t v;
 
       try
         {
-          v = this->v_traits.make (val);
+          v = val_traits().make (val);
         }
       catch (...)
         {
-          this->v_traits.free (k);
+          val_traits().free (k);
           throw;
         }
 
@@ -472,8 +469,8 @@ struct hash_table
                   (tmp & val_traits::XBIT) == 0 &&
                   xatomic_cas_bool (ep + idx + 1, tmp, v))
                 {
-                  this->k_traits.free (k);
-                  this->v_traits.destroy (tmp);
+                  key_traits().free (k);
+                  val_traits().destroy (tmp);
                   return (empty);
                 }
 
@@ -511,8 +508,8 @@ struct hash_table
               this->nelems.fetch_sub (1, std::memory_order_acq_rel);
               // Safe to set the key without atomic ops.
               ep[idx] = key_traits::DELT;
-              this->k_traits.destroy (oldk);
-              this->v_traits.destroy (oldv);
+              key_traits().destroy (oldk);
+              val_traits().destroy (oldv);
               return (true);
             }
 
@@ -589,8 +586,8 @@ struct hash_table
           if (k == key_traits::FREE || k == key_traits::DELT)
             continue;
 
-          this->k_traits.free (k);
-          this->v_traits.free (this->vec->data[i + 1] & ~val_traits::XBIT);
+          key_traits().free (k);
+          val_traits().free (this->vec->data[i + 1] & ~val_traits::XBIT);
         }
 
       this->vec->safe_destroy ();
