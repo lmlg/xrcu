@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
+#include <type_traits>
+#include <initializer_list>
 
 namespace std
 {
@@ -94,7 +96,33 @@ struct stack
   detail::stack_base stkbase;
   typedef detail::stack_node<T> node_type;
 
+  template <class Iter>
+  void _Init (Iter first, Iter last, std::false_type)
+    {
+      for (; first != last; ++first)
+        this->push (*first);
+    }
+
+  template <class Iter>
+  void _Init(Iter n, Iter value, std::true_type)
+    {
+      for (Iter x = 0; x != n; ++x)
+        this->push (value);
+    }
+
   stack () : stkbase () {}
+
+  template <class Iter>
+  stack (Iter first, Iter last)
+    {
+      this->_Init (first, last, typename std::is_integral<Iter>::type ());
+    }
+
+  stack (std::initializer_list<T> lst)
+    {
+      for (const auto& x : lst)
+        this->push (x);
+    }
 
   void push (const T& value)
     {

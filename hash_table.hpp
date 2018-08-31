@@ -278,7 +278,7 @@ struct hash_table
       EqFn e = EqFn (), HashFn h = HashFn ())
     {
       this->_Init (size, mvr, e, h);
-      for (auto pair : lst)
+      for (const auto& pair : lst)
         this->insert (pair.first, pair.second);
     }
 
@@ -490,8 +490,9 @@ struct hash_table
 
       while (true)
         {
-          auto ep = this->vec->data;
-          size_t idx = this->_Probe (key, ep, false);
+          auto vp = this->vec;
+          uintptr_t *ep = vp->data;
+          size_t idx = this->_Probe (key, vp, false);
 
           if (idx == (size_t)-1)
             return (false);
