@@ -2,6 +2,7 @@
 #define __XRCU_STACK_HPP__   1
 
 #include "xrcu.hpp"
+#include <atomic>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
@@ -21,8 +22,7 @@ namespace detail
 
 struct stack_node_base
 {
-  stack_node_base *next;
-  size_t size;
+  stack_node_base *next = nullptr;
 };
 
 template <class T>
@@ -43,17 +43,38 @@ struct stack_node : public stack_node_base, finalizable
 
 struct stack_base
 {
-  alignas (alignof (size_t)) char buf[64];
+  std::atomic<stack_node_base *> rnode;
+  std::atomic<size_t> size;
 
-  stack_base ();
-  void destroy (void (*) (stack_node_base *));
+  void reset (stack_node_base *nodep, size_t sz)
+    {
+      this->rnode.store (nodep, std::memory_order_relaxed);
+      this->size.store (sz, std::memory_order_relaxed);
+    }
 
-  stack_node_base* root () const;
+  void destroy (void (*fct) (stack_node_base *))
+    {
+      for (auto runp = this->root (); runp != nullptr; )
+        {
+          auto next = runp->next;
+          fct (runp), runp = next;
+        }
+
+      this->reset (nullptr, 0);
+    }
+
+  stack_node_base* root () const
+    {
+      return (this->rnode.load (std::memory_order_relaxed));
+    }
 
   void push_node (stack_node_base *nodep);
   stack_node_base* pop_node ();
-  bool empty () const;
-  size_t size () const;
+
+  bool empty () const
+    {
+      return (this->root () == nullptr);
+    }
 
   void swap (stack_base& right);
 };
@@ -93,52 +114,154 @@ struct stack_iter_base : public cs_guard
 template <class T>
 struct stack
 {
-  detail::stack_base stkbase;
+  struct _Stkbase : public finalizable
+    {
+      detail::stack_base sb;
+
+      _Stkbase ()
+        {
+          this->sb.reset (nullptr, 0);
+        }
+
+      void push (detail::stack_node_base *nodep)
+        {
+          this->sb.push_node (nodep);
+        }
+
+      detail::stack_node_base* pop ()
+        {
+          return (this->sb.pop_node ());
+        }
+
+      static void
+      fini (detail::stack_node_base *nodep)
+        {
+          delete (detail::stack_node<T> *)nodep;
+        }
+
+      void safe_destroy ()
+        {
+          delete this;
+        }
+
+      ~_Stkbase ()
+        {
+          this->sb.destroy (fini);
+        }
+    };
+
+  std::atomic<_Stkbase *> basep;
   typedef detail::stack_node<T> node_type;
+
+  _Stkbase* _Base ()
+    {
+      return (this->basep.load (std::memory_order_relaxed));
+    }
+
+  const _Stkbase* _Base () const
+    {
+      return (this->basep.load (std::memory_order_relaxed));
+    }
+
+  static void
+  _Clean_nodes (detail::stack_node_base *runp)
+    {
+      while (runp != nullptr)
+        {
+          auto tmp = runp->next;
+          _Stkbase::fini (runp);
+          runp = tmp;
+        }
+    }
 
   template <class Iter>
   void _Init (Iter first, Iter last, std::false_type)
     {
-      for (; first != last; ++first)
-        this->push (*first);
+      size_t len = 0;
+      detail::stack_node_base *runp = nullptr, **outp = &runp;
+      try
+        {
+          for (; first != last; ++first, ++len)
+            {
+              *outp = new node_type (*first);
+              outp = &(*outp)->next;
+            }
+        }
+      catch (...)
+        {
+          _Clean_nodes (runp);
+          throw;
+        }
+
+      this->_Base()->sb.reset (runp, len);
     }
 
   template <class Iter>
   void _Init (Iter n, Iter value, std::true_type)
     {
-      for (Iter x = 0; x != n; ++x)
-        this->push (value);
+      detail::stack_node_base *runp = nullptr, **outp = &runp;
+
+      try
+        {
+          for (Iter x = 0; x != n; ++x)
+            {
+              *outp = new node_type (value);
+              outp = &(*outp)->next;
+            }
+        }
+      catch (...)
+        {
+          _Clean_nodes (runp);
+          throw;
+        }
+
+      this->_Base()->sb.reset (runp, n);
     }
 
-  stack () : stkbase () {}
+  void _Init_base ()
+    {
+      this->basep.store (new _Stkbase (), std::memory_order_relaxed);
+    }
+
+  stack ()
+    {
+      this->_Init_base ();
+    }
 
   template <class Iter>
   stack (Iter first, Iter last)
     {
+      this->_Init_base ();
       this->_Init (first, last, typename std::is_integral<Iter>::type ());
     }
 
-  stack (std::initializer_list<T> lst)
+  stack (std::initializer_list<T> lst) : stack (lst.begin (), lst.end ())
     {
-      for (const auto& x : lst)
-        this->push (x);
+    }
+
+  stack (const stack<T>& right) : stack (right.begin (), right.end ())
+    {
+    }
+
+  stack (stack<T>&& right) : stack (right.begin (), right.end ())
+    {
     }
 
   void push (const T& value)
     {
-      this->stkbase.push_node (new node_type (value));
+      this->_Base()->push (new node_type (value));
     }
 
   template <class ...Args>
   void emplace (Args&& ...args)
     {
-      this->stkbase.push_node (new node_type (args...));
+      this->base->push (new node_type (args...));
     }
 
   T pop ()
     {
       cs_guard g;
-      auto node = (node_type *)this->stkbase.pop_node ();
+      auto node = (node_type *)this->_Base()->pop ();
 
       if (!node)
         throw std::runtime_error ("stack<T>::pop: stack is empty");
@@ -151,7 +274,7 @@ struct stack
   T top ()
     {
       cs_guard g;
-      auto node = (node_type *)this->stkbase.root ();
+      auto node = (node_type *)this->_Base()->sb.root ();
 
       if (!node)
         throw std::runtime_error ("stack<T>::top: stack is empty");
@@ -183,7 +306,7 @@ struct stack
 
   iterator begin ()
     {
-      return (iterator (this->stkbase.root ()));
+      return (iterator (this->_Base()->sb.root ()));
     }
 
   iterator end ()
@@ -193,7 +316,7 @@ struct stack
 
   const_iterator cbegin () const
     {
-      return (const_iterator (this->stkbase.root ()));
+      return (const_iterator (this->_Base()->sb.root ()));
     }
 
   const_iterator cend () const
@@ -213,24 +336,35 @@ struct stack
 
   size_t size () const
     {
-      return (this->stkbase.size ());
+      return (this->_Base()->sb.size.load (std::memory_order_relaxed));
     }
 
   void swap (stack<T>& right)
     {
       if (this != &right)
-        this->stkbase.swap (right.stkbase);
+        this->_Base()->sb.swap (right._Base()->sb);
     }
 
-  static void
-  _Fini (detail::stack_node_base *ptr)
+  stack<T>& operator= (const stack<T>& right)
     {
-      delete (node_type *)ptr;
+      if (this == &right)
+        return (*this);
+
+      stack<T> tmp (right);
+      auto prev = this->basep.exchange (tmp._Base (),
+                                        std::memory_order_acq_rel);
+
+      tmp.basep.store (nullptr, std::memory_order_relaxed);
+      if (prev)
+        finalize (prev);
+
+      return (*this);
     }
 
   ~stack ()
     {
-      this->stkbase.destroy (_Fini);
+      delete this->_Base ();
+      this->basep.store (nullptr, std::memory_order_relaxed);
     }
 };
 
