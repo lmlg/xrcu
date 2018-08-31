@@ -104,7 +104,7 @@ struct stack
     }
 
   template <class Iter>
-  void _Init(Iter n, Iter value, std::true_type)
+  void _Init (Iter n, Iter value, std::true_type)
     {
       for (Iter x = 0; x != n; ++x)
         this->push (value);
@@ -218,10 +218,8 @@ struct stack
 
   void swap (stack<T>& right)
     {
-      if (this == &right)
-        return;
-
-      this->stkbase.swap (right.stkbase);
+      if (this != &right)
+        this->stkbase.swap (right.stkbase);
     }
 
   static void

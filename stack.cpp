@@ -1,4 +1,5 @@
 #include "stack.hpp"
+#include "xatomic.hpp"
 #include <atomic>
 
 namespace xrcu
@@ -49,7 +50,7 @@ void stack_base::push_node (stack_node_base *nodep)
       nodep->next = sb->root.load (std::memory_order_relaxed);
       if (nodep->next == NODE_SPIN)
         {
-          std::atomic_thread_fence (std::memory_order_acquire);
+          xatomic_spin_nop ();
           continue;
         }
 
@@ -70,7 +71,7 @@ stack_node_base* stack_base::pop_node ()
       auto np = sb->root.load (std::memory_order_relaxed);
       if (np == NODE_SPIN)
         {
-          std::atomic_thread_fence (std::memory_order_acquire);
+          xatomic_spin_nop ();
           continue;
         }
 
