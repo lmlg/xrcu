@@ -133,6 +133,11 @@ struct stack
         {
           this->sb.destroy (fini);
         }
+
+      ~_Stkbase ()
+        {
+          this->safe_destroy ();
+        }
     };
 
   std::atomic<_Stkbase *> basep;
@@ -324,6 +329,11 @@ struct stack
       return (this->_Base()->sb.size.load (std::memory_order_relaxed));
     }
 
+  bool empty () const
+    {
+      return (this->_Base()->sb.root () == nullptr);
+    }
+
   void swap (stack<T>& right)
     {
       if (this != &right)
@@ -346,14 +356,57 @@ struct stack
       return (*this);
     }
 
+  bool operator== (const stack<T>& right) const
+    {
+      auto x1 = this->cbegin (), x2 = this->cend ();
+      auto y1 = right.cbegin (), y2 = right.cend ();
+
+      for (; x1 != x2 && y1 != y2; ++x1, ++y1)
+        if (*x1 != *y1)
+          return (false);
+
+      return (x1 == x2 && y1 == y2);
+    }
+
+  bool operator!= (const stack<T>& right) const
+    {
+      return (!(*this == right));
+    }
+
+  bool operator< (const stack<T>& right) const
+    {
+      auto x1 = this->cbegin (), x2 = this->cend ();
+      auto y1 = right.cbegin (), y2 = right.cend ();
+
+      for (; x1 != x2; ++x1, ++y1)
+        {
+          if (y1 == y2 || *y1 < *x1)
+            return (false);
+          else if (*x1 < *y1)
+            return (true);
+        }
+
+      return (y1 != y2);
+    }
+
+  bool operator> (const stack<T>& right) const
+    {
+      return (right < *this);
+    }
+
+  bool operator<= (const stack<T>& right) const
+    {
+      return (!(right < *this));
+    }
+
+  bool operator>= (const stack<T>& right) const
+    {
+      return (!(*this < right));
+    }
+
   ~stack ()
     {
-      auto tmp = this->_Base ();
-      if (!tmp)
-        return;
-
-      tmp->safe_destroy ();
-      delete tmp;
+      delete this->_Base ();
       this->basep.store (nullptr, std::memory_order_relaxed);
     }
 };
