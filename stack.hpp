@@ -331,7 +331,7 @@ struct stack
 
   bool empty () const
     {
-      return (this->_Base()->sb.root () == nullptr);
+      return (this->_Base()->sb.empty ());
     }
 
   void swap (stack<T>& right)
