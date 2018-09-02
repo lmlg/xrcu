@@ -336,6 +336,8 @@ struct stack
 
   void swap (stack<T>& right)
     {
+      cs_guard g;
+
       if (this != &right)
         this->_Base()->sb.swap (right._Base()->sb);
     }
