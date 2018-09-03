@@ -54,11 +54,24 @@ stack_node_base* stack_base::pop_node ()
     }
 }
 
+static inline stack_node_base*
+set_spin (std::atomic<stack_node_base *>& rn)
+{
+  while (true)
+    {
+      stack_node_base *tmp = rn.load (std::memory_order_relaxed);
+      if (tmp != NODE_SPIN && rn.compare_exchange_weak (tmp, NODE_SPIN,
+          std::memory_order_acq_rel, std::memory_order_release))
+        return (tmp);
+
+      xatomic_spin_nop ();
+    }
+}
+
 void stack_base::swap (stack_base& right)
 {
   // Prevent any further modifications.
-  auto ln = this->rnode.exchange (NODE_SPIN, std::memory_order_relaxed);
-  auto rn = right.rnode.exchange (NODE_SPIN, std::memory_order_relaxed);
+  auto ln = set_spin (this->rnode), rn = set_spin (right.rnode);
 
   // Swap the sizes.
   size_t sz = this->size.load (std::memory_order_relaxed);
