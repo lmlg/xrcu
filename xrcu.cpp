@@ -148,21 +148,19 @@ struct tl_data : public td_link
       this->n_fins = 0;
     }
 
-  void flush_finalizers ()
-    {
-      if (this->in_cs ())
-        this->must_flush = true;
-      else
-        this->flush_all ();
-    }
-
   void finalize (finalizable *finp)
     {
       finp->fin_next = this->fin_objs;
       this->fin_objs = finp;
 
-      if (++this->n_fins >= MAX_FINS)
-        this->flush_finalizers ();
+      if (++this->n_fins < MAX_FINS)
+        ;
+      else if (this->in_cs ())
+        /* Can't reclaim memory since we are in a critical section.
+         * Set the flag to do it ASAP. */
+        this->must_flush = true;
+      else
+        this->flush_all ();
     }
 
   ~tl_data ()

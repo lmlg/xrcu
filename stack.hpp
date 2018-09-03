@@ -108,18 +108,12 @@ struct stack
         }
 
       static void
-      fini (detail::stack_node_base *nodep)
-        {
-          delete (detail::stack_node<T> *)nodep;
-        }
-
-      static void
       clean_nodes (detail::stack_node_base *runp)
         {
           while (runp != nullptr)
             {
               auto tmp = runp->next;
-              fini (runp);
+              delete (detail::stack_node<T> *)runp;
               runp = tmp;
             }
         }
