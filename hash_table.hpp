@@ -233,14 +233,28 @@ struct hash_table
   detail::ht_vector *vec;
   EqFn eqfn;
   HashFn hashfn;
-  float mv_ratio;
+  float mv_ratio = 0.85f;
   std::atomic<intptr_t> grow_limit;
   detail::ht_lock lock;
   std::atomic<size_t> nelems;
 
+  float factor (float mvr)
+    {
+      float ret = this->mv_ratio;
+      if (mvr >= 0.2f && mvr <= 0.9f)
+        this->mv_ratio = mvr;
+
+      return (ret);
+    }
+
+  float factor () const
+    {
+      return (this->mv_ratio);
+    }
+
   void _Init (size_t size, float mvr, EqFn e, HashFn h)
     {
-      this->mv_ratio = mvr < 0.2f || mvr > 0.9f ? 0.85f : mvr;
+      this->factor (mvr);
       size_t pidx, gt = detail::find_hsize (0, this->mv_ratio, pidx);
 
       this->vec = detail::make_htvec (pidx,
