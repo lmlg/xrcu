@@ -26,11 +26,6 @@ struct ht_wrapper : public finalizable
   T value;
 
   ht_wrapper (const T& val) : value (val) {}
-
-  void safe_destroy ()
-    {
-      delete this;
-    }
 };
 
 template <bool Integral, class T>

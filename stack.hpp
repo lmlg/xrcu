@@ -32,11 +32,6 @@ struct stack_node : public stack_node_base, finalizable
 
   stack_node (const T& v) : value (v) {}
 
-  void safe_destroy ()
-    {
-      delete this;
-    }
-
   template <class ...Args>
   stack_node (Args&&... args) : value (std::forward<Args>(args)...) {}
 };
@@ -50,17 +45,6 @@ struct stack_base
     {
       this->rnode.store (nodep, std::memory_order_relaxed);
       this->size.store (sz, std::memory_order_relaxed);
-    }
-
-  void destroy (void (*fct) (stack_node_base *))
-    {
-      for (auto runp = this->root (); runp != nullptr; )
-        {
-          auto next = runp->next;
-          fct (runp), runp = next;
-        }
-
-      this->reset (nullptr, 0);
     }
 
   stack_node_base* root () const
@@ -129,14 +113,21 @@ struct stack
           delete (detail::stack_node<T> *)nodep;
         }
 
-      void safe_destroy ()
+      static void
+      clean_nodes (detail::stack_node_base *runp)
         {
-          this->sb.destroy (fini);
+          while (runp != nullptr)
+            {
+              auto tmp = runp->next;
+              fini (runp);
+              runp = tmp;
+            }
         }
 
       ~_Stkbase ()
         {
-          this->safe_destroy ();
+          clean_nodes (this->sb.root ());
+          this->sb.reset (nullptr, 0);
         }
     };
 
@@ -151,17 +142,6 @@ struct stack
   const _Stkbase* _Base () const
     {
       return (this->basep.load (std::memory_order_relaxed));
-    }
-
-  static void
-  _Clean_nodes (detail::stack_node_base *runp)
-    {
-      while (runp != nullptr)
-        {
-          auto tmp = runp->next;
-          _Stkbase::fini (runp);
-          runp = tmp;
-        }
     }
 
   template <class Iter>
@@ -179,7 +159,7 @@ struct stack
         }
       catch (...)
         {
-          _Clean_nodes (runp);
+          _Stkbase::clean_nodes (runp);
           throw;
         }
 
@@ -201,7 +181,7 @@ struct stack
         }
       catch (...)
         {
-          _Clean_nodes (runp);
+          _Stkbase::clean_nodes (runp);
           throw;
         }
 
@@ -352,9 +332,7 @@ struct stack
                                         std::memory_order_acq_rel);
 
       tmp.basep.store (nullptr, std::memory_order_relaxed);
-      if (prev)
-        finalize (prev);
-
+      finalize (prev);
       return (*this);
     }
 
