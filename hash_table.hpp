@@ -255,7 +255,7 @@ struct hash_table
   void _Init (size_t size, float mvr, EqFn e, HashFn h)
     {
       this->factor (mvr);
-      size_t pidx, gt = detail::find_hsize (0, this->mv_ratio, pidx);
+      size_t pidx, gt = detail::find_hsize (size, this->mv_ratio, pidx);
 
       this->vec = detail::make_htvec (pidx,
         key_traits::FREE, val_traits::FREE);

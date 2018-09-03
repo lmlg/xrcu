@@ -91,7 +91,7 @@ void ht_lock::acquire ()
   const int MAX_RETRIES = 100;
   const int MAX_SPINS = 1000;
 
-  while (true)
+  for ( ; ; zv = 0)
     {
       if (this->lock.compare_exchange_weak (zv, 1,
           std::memory_order_acquire, std::memory_order_relaxed))
@@ -103,10 +103,10 @@ void ht_lock::acquire ()
           for (int i = 0; i < MAX_SPINS &&
               this->lock.load (std::memory_order_relaxed) != 0; ++i)
             xatomic_spin_nop ();
-          sleep = ++retries == MAX_RETRIES;
-        }
 
-      zv = 0;
+          if (++retries == MAX_RETRIES)
+            sleep = true;
+        }
     }
 }
 
