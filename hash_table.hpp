@@ -238,7 +238,7 @@ struct hash_table
   detail::ht_lock lock;
   std::atomic<size_t> nelems;
 
-  float factor (float mvr)
+  float load_factor (float mvr)
     {
       float ret = this->mv_ratio;
       if (mvr >= 0.2f && mvr <= 0.9f)
@@ -247,14 +247,14 @@ struct hash_table
       return (ret);
     }
 
-  float factor () const
+  float load_factor () const
     {
       return (this->mv_ratio);
     }
 
   void _Init (size_t size, float mvr, EqFn e, HashFn h)
     {
-      this->factor (mvr);
+      this->load_factor (mvr);
       size_t pidx, gt = detail::find_hsize (size, this->mv_ratio, pidx);
 
       this->vec = detail::make_htvec (pidx,
@@ -371,8 +371,8 @@ struct hash_table
 
       if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
         {
-          detail::ht_vector *old = this->vec;
-          detail::ht_vector *np = detail::make_htvec (old->pidx () + 1,
+          auto old = this->vec;
+          auto np = detail::make_htvec (old->pidx () + 1,
               key_traits::FREE, val_traits::FREE);
           size_t nelem = 0;
 
