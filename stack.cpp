@@ -15,18 +15,16 @@ void stack_base::push_node (stack_node_base *nodep)
   while (true)
     {
       nodep->next = this->rnode.load (std::memory_order_relaxed);
-      if (nodep->next == NODE_SPIN)
-        {
-          xatomic_spin_nop ();
-          continue;
-        }
 
-      if (this->rnode.compare_exchange_weak (nodep->next, nodep,
-          std::memory_order_acq_rel, std::memory_order_relaxed))
+      if (nodep->next != NODE_SPIN &&
+          this->rnode.compare_exchange_weak (nodep->next, nodep,
+            std::memory_order_acq_rel, std::memory_order_relaxed))
         {
           this->size.fetch_add (1, std::memory_order_relaxed);
           break;
         }
+
+      xatomic_spin_nop ();
     }
 }
 
@@ -39,10 +37,7 @@ stack_node_base* stack_base::pop_node ()
       auto np = this->rnode.load (std::memory_order_relaxed);
 
       if (np == NODE_SPIN)
-        {
-          xatomic_spin_nop ();
-          continue;
-        }
+        ;
       else if (np == nullptr)
         return (np);
       else if (this->rnode.compare_exchange_weak (np, np->next,
@@ -51,6 +46,8 @@ stack_node_base* stack_base::pop_node ()
           this->size.fetch_sub (1, std::memory_order_release);
           return (np);
         }
+
+      xatomic_spin_nop ();
     }
 }
 
