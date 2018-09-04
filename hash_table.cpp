@@ -68,8 +68,6 @@ ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val)
   // Ensure correct alignment for double-width CAS.
   if ((uintptr_t)ret->data % (2 * sizeof (uintptr_t)) != 0)
     ++ret->data;
-
-  --tsize;
 #else
   auto ret = ht_vector::make (tsize);
 #endif
