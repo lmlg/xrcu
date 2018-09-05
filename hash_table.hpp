@@ -35,7 +35,7 @@ struct ht_traits
   static const uintptr_t FREE = (~(uintptr_t)0) & ~XBIT;
   static const uintptr_t DELT = FREE >> 1;
 
-  uintptr_t make (T val) const
+  uintptr_t make (T val) const noexcept
     {
       return ((uintptr_t)(typename std::make_unsigned<T>::type)val);
     }
@@ -486,6 +486,7 @@ struct hash_table
               continue;
             }
 
+          // The table was being rehashed - retry.
           this->_Rehash ();
         }
     }

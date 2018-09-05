@@ -197,7 +197,6 @@ local_data ()
 void enter_cs ()
 {
   auto self = local_data ();
-  std::atomic_signal_fence (std::memory_order_acq_rel);
   auto val = self->get_ctr ();
   val = (val & GP_NEST_MASK) == 0 ? global_reg.get_ctr () : val + 1;
   self->counter.store (val, std::memory_order_release);
@@ -208,7 +207,6 @@ void exit_cs ()
   auto self = local_data ();
   auto val = self->get_ctr ();
   self->counter.store (val - 1, std::memory_order_release);
-  std::atomic_signal_fence (std::memory_order_acq_rel);
 
   if (self->must_flush && !self->in_cs ())
     self->flush_all ();
