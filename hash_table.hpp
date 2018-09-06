@@ -3,6 +3,7 @@
 
 #include "xrcu.hpp"
 #include "xatomic.hpp"
+#include "optional.hpp"
 #include <atomic>
 #include <functional>
 #include <cstdint>
@@ -408,7 +409,24 @@ struct hash_table
         }
     }
 
-  ValT find (const KeyT& key, const ValT& dfl = ValT ()) const
+  optional<ValT> find (const KeyT& key) const
+    {
+      cs_guard g;
+
+      while (true)
+        {
+          auto vp = this->vec;
+          size_t idx = this->_Probe (key, vp, false);
+          if (idx == (size_t)-1)
+            return (optional<ValT> ());
+
+          uintptr_t val = vp->data[idx + 1] & ~val_traits::XBIT;
+          return (val == val_traits::DELT ? optional<ValT> () :
+            optional<ValT> (val_traits().get (val)));
+        }
+    }
+
+  ValT find (const KeyT& key, const ValT& dfl) const
     {
       cs_guard g;
 
@@ -418,11 +436,9 @@ struct hash_table
           size_t idx = this->_Probe (key, vp, false);
           if (idx == (size_t)-1)
             return (dfl);
-          else
-            {
-              uintptr_t val = vp->data[idx + 1] & ~val_traits::XBIT;
-              return (val == val_traits::DELT ? dfl : val_traits().get (val));
-            }
+
+          uintptr_t val = vp->data[idx + 1] & ~val_traits::XBIT;
+          return (val == val_traits::DELT ? dfl : val_traits().get (val));
         }
     }
 
