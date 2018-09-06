@@ -1,0 +1,234 @@
+#! /bin/sh
+
+usage () {
+cat <<EOF
+Usage: $0 [option]... [var=value]... [target]
+
+In order to set environment variables (like CXX), you have to specify them as
+var=value. See below for descriptions of some of them.
+
+Default values are specified in brackets.
+
+Configuration settings:
+  --srcdir=dir            source directory [auto detected]
+
+Installation directories:
+  --prefix=prefix         main installation prefix [/usr/local]
+  --exec-prefix=eprefix   installation prefix for executable files [prefix]
+  --bindir=dir            user executables [eprefix]
+  --libdir=dir            library files [prefix/lib]
+  --includedir=dir        include files [prefix/include]
+
+System types:
+  --target=target         configure to run on target [auto detected]
+  --host=host             same as target
+  --build=build           build system, used to detect cross compiling
+
+Optional features:
+  --enable-debug          build with debug symbols [no]
+  --enable-warnings       build with extensive warnings [yes]
+  --enable-shared         build shared library [yes]
+  --enable-static         build static library [no]
+
+Environment variables you may set:
+  CXX                     C++ compiler [auto detected]
+  CXXFLAGS                C++ compiler flags [-O2 -pipe ...]
+  CROSS_COMPILE           prefix for cross compiler and tools [not set]
+
+These variables may be set to override detections made by configure.
+
+EOF
+exit 0
+}
+
+quote () {
+tr '\n' ' ' <<EOF | grep '^[-[:alnum:]_=,./:]* $' >/dev/null 2>&1 && { echo "$1" ; return 0 ; }
+$1
+EOF
+printf %s\\n "$1" | sed -e "s/'/'\\\\''/g" -e "1s/^/'/" -e "\$s/\$/'/" -e "s#^'\([-[:alnum:]_,./:]*\)=\(.*\)\$#\1='\2#"
+}
+
+echo () { printf "%s\n" "$*" ; }
+
+fail () { echo "$*" ; exit 1 ; }
+
+fnmatch () { eval "case \"\$2\" in $1) return 0 ;; *) return 1 ;; esac" ; }
+
+cmdexists () { type "$1" >/dev/null 2>&1 ; }
+
+trycxx () { test -z "$CXX" && cmdexists "$1" && CXX=$1 ; }
+
+stripdir () {
+while eval "fnmatch '*/' \"\${$1}\"" ; do eval "$1=\${$1%/}" ; done
+}
+
+tryflag () {
+printf "checking whether compiler accepts %s... " "$2"
+echo "typedef int x;" > "$tsrc"
+if $CXX $CXXFLAGS_TRY $2 -c -o /dev/null "$tsrc" >/dev/null 2>&1 ; then
+printf "yes\n"
+eval "$1=\"\${$1} \$2\""
+eval "$1=\${$1# }"
+return 0
+else
+printf "no\n"
+return 1
+fi
+}
+
+CXXFLAGS_EXTRA=
+CXXFLAGS_AUTO=
+CXXFLAGS_TRY=
+CXX_PROG=
+LDFLAGS_AUTO=
+LDFLAGS_TRY=
+srcdir=
+prefix=/usr/local
+exec_prefix='$(prefix)'
+bindir='$(exec_prefix)/bin'
+libdir='$(prefix)/lib'
+includedir='$(prefix)/include'
+debug=no
+warnings=yes
+shared=yes
+static=no
+
+for arg ; do
+case "$arg" in
+--help|-h) usage ;;
+--srcdir=*) srcdir=${arg#*=} ;;
+--prefix=*) prefix=${arg#*=} ;;
+--exec-prefix=*) exec_prefix=${arg#*=} ;;
+--bindir=*) bindir=${arg#*=} ;;
+--libdir=*) libdir=${arg#*=} ;;
+--includedir=*) includedir=${arg#*=} ;;
+--syslibdir=*) syslibdir=${arg#*=} ;;
+--enable-shared|--enable-shared=yes) shared=yes ;;
+--disable-shared|--enable-shared=no) shared=no ;;
+--enable-static|--enable-static=yes) static=yes ;;
+--disable-static|--enable-static=no) static=no ;;
+--enable-debug|--enable-debug=yes) debug=yes ;;
+--disable-debug|--enable-debug=no) debug=no ;;
+--enable-warnings|--enable-warnings=yes) warnings=yes ;;
+--disable-warnings|--enable-warnings=no) warnings=no ;;
+--enable-*|--disable-*|--with-*|--without-*|--*dir=*) ;;
+--host=*|--target=*) target=${arg#*=} ;;
+--build=*) build=${arg#*=} ;;
+-* ) echo "$0: unknown option $arg" ;;
+CXX=*) CXX=${arg#*=} ;;
+CXXFLAGS=*) CXXFLAGS=${arg#*=} ;;
+LDFLAGS=*) LDFLAGS=${arg#*=} ;;
+CROSS_COMPILE=*) CROSS_COMPILE=${arg#*=} ;;
+*=*) ;;
+*) build=$arg ; target=$arg ;;
+esac
+done
+
+for i in srcdir prefix exec_prefix bindir libdir includedir ; do
+stripdir $i
+done
+
+# See if we're building out of tree.
+
+if test -z "$srcdir" ; then
+srcdir="${0%/configure}"
+stripdir srcdir
+fi
+abs_builddir="$(pwd)" || fail "$0: cannot determine working directory"
+abs_srcdir="$(cd $srcdir && pwd)" || fail "$0: invalid source directory $srcdir"
+test "$abs_srcdir" = "$abs_builddir" && srcdir=.
+test "$srcdir" != "." -a -f Makefile -a ! -h Makefile && fail "$0: Makefile already exists in the working directory"
+
+# Generate a temporary directory.
+set -C
+tdir=$(mktemp -d "$(basename $0).XXXXXXX")
+set +C
+trap 'rm -rf "$tdir"' EXIT INT QUIT TERM HUP
+
+tsrc="$tdir/tx.c"
+texe="$tdir/tx"
+
+# For cross-compiling, set a default CROSS_COMPILE if it wasn't provided.
+test "$target" && \
+test "$target" != "$build" && \
+test -z "$CROSS_COMPILE" && \
+CROSS_COMPILE="$target-"
+
+# Set C++ compiler.
+printf "checking for C++ compiler..."
+trycxx ${CROSS_COMPILE}g++
+trycxx ${CROSS_COMPILE}clang++
+trycxx ${CROSS_COMPILE}icc
+trycxx ${CROSS_COMPILE}cxx
+printf "%s\n" "$CXX"
+test -n "$CXX" || { echo "$0: cannot find a C++ compiler" ; exit 1 ; }
+
+printf "checking whether C++ compiler works... "
+echo "typedef int x;" > "$tsrc"
+if output=$($CXX $CXXFLAGS -c -o /dev/null "$tsrc" 2>&1) ; then
+printf "yes\n"
+else
+printf "no; compiler output follows:\n%s\n" "$output"
+exit 1
+fi
+
+# Find out options to force errors on unknown compiler/linker flags.
+tryflag   CXXFLAGS_TRY  -Werror=unknown-warning-option
+tryflag   CXXFLAGS_TRY  -Werror=unused-command-line-argument
+tryflag   CXXFLAGS_TRY  -Werror=ignored-optimization-argument
+
+# Try to avoid executable stacks in GNU compilers.
+tryflag CXXFLAGS_EXTRA -Wa,--noexecstack
+
+# See if the compiler accepts explicit standard versioning
+tryflag CXXFLAGS -std=c++11
+
+# Enable debugging if needed.
+test "$debug" = yes && CXXFLAGS_AUTO=-g
+
+# Always try to use -pipe.
+tryflag CXXFLAGS_AUTO -pipe
+
+if test "x$warnings" = xyes ; then
+tryflag CXXFLAGS_AUTO -Wall
+tryflag CXXFLAGS_AUTO -Wno-parentheses
+tryflag CXXFLAGS_AUTO -Wno-uninitialized
+tryflag CXXFLAGS_AUTO -Wno-missing-braces
+tryflag CXXFLAGS_AUTO -Wno-unused-value
+tryflag CXXFLAGS_AUTO -Wno-unused-but-set-variable
+tryflag CXXFLAGS_AUTO -Wno-unknown-pragmas
+tryflag CXXFLAGS_AUTO -Wno-pointer-to-int-cast
+fi
+
+printf "creating config.mak... "
+
+cmdline=$(quote "$0")
+for i ; do cmdline="$cmdline $(quote "$i")" ; done
+
+exec 3>&1 1>config.mak
+
+cat << EOF
+# This version of config.mak was generated by:
+# $cmdline
+# Any changes made here will be lost if configure is re-run
+srcdir = $srcdir
+prefix = $prefix
+exec_prefix = $exec_prefix
+bindir = $bindir
+libdir = $libdir
+includedir = $includedir
+CXX = $CXX
+CXXFLAGS = $CXXFLAGS
+CXXFLAGS_AUTO = $CXXFLAGS_AUTO
+CXXFLAGS_EXTRA = $CXXFLAGS_EXTRA
+LDFLAGS = $LDFLAGS
+LDFLAGS_AUTO = $LDFLAGS_AUTO
+CROSS_COMPILE = $CROSS_COMPILE
+EOF
+test "x$static" = xno && echo "STATIC_LIBS ="
+test "x$shared" = xno && echo "SHARED_LIBS ="
+exec 1>&3 3>&-
+
+test "$srcdir" = "." || ln -sf $srcdir/Makefile .
+
+printf "done\n"
