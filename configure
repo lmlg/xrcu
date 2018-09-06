@@ -183,6 +183,9 @@ tryflag CXXFLAGS_EXTRA -Wa,--noexecstack
 # See if the compiler accepts explicit standard versioning
 tryflag CXXFLAGS -std=c++11
 
+# Enable optimizations
+tryflag CXXFLAGS -O2
+
 # Enable debugging if needed.
 test "$debug" = yes && CXXFLAGS_AUTO=-g
 
