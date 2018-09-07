@@ -293,8 +293,8 @@ struct hash_table
       this->_Init (size, mvr, e, h);
     }
 
-  template <class InIt>
-  hash_table (InIt first, InIt last, size_t size = 0, float mvr = 0.85f,
+  template <class Iter>
+  hash_table (Iter first, Iter last, size_t size = 0, float mvr = 0.85f,
       EqFn e = EqFn (), HashFn h = HashFn ())
     {
       this->_Init (size, mvr, e, h);
@@ -304,11 +304,9 @@ struct hash_table
 
   hash_table (std::initializer_list<std::pair<KeyT, ValT> > lst,
       size_t size = 0, float mvr = 0.85f,
-      EqFn e = EqFn (), HashFn h = HashFn ())
+      EqFn e = EqFn (), HashFn h = HashFn ()) :
+      hash_table (lst.begin (), lst.end (), size, mvr, e, h)
     {
-      this->_Init (size, mvr, e, h);
-      for (const auto& pair : lst)
-        this->insert (pair.first, pair.second);
     }
 
   hash_table (const self_type& right) :
