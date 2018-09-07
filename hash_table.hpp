@@ -122,8 +122,6 @@ struct alignas (uintptr_t) ht_vector : public finalizable
     }
 };
 
-extern size_t prime_by_idx (size_t idx);
-
 inline size_t
 secondary_hash (size_t hval)
 {
@@ -503,7 +501,7 @@ struct hash_table
                   uintptr_t v = f.call1 (val_traits().get (tmp), args...);
                   if (xatomic_cas_bool (ep + idx + 1, tmp, v))
                     {
-                      key_traits().destroy (k);
+                      key_traits().free (k);
                       val_traits().destroy (tmp);
                       return (empty);
                     }
@@ -546,14 +544,14 @@ struct hash_table
 
       template <class ...Args>
       uintptr_t call0 (Args ...args)
-        {
+        { // Call function with default-constructed value and arguments.
           auto tmp = this->fct ((typename Vtraits::value_type ()), args...);
           return (Vtraits().make (tmp));
         }
 
       template <class T, class ...Args>
       uintptr_t call1 (const T& x, Args ...args)
-        {
+        { // Call function with stored value and arguments.
           return (Vtraits().make (this->fct (x, args...)));
         }
 

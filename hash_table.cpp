@@ -35,11 +35,6 @@ static const size_t PRIMES[] =
 #endif
 };
 
-size_t prime_by_idx (size_t idx)
-{
-  return (PRIMES[idx]);
-}
-
 size_t find_hsize (size_t size, float mvr, size_t& pidx)
 {
   intptr_t i1 = 0, i2 = sizeof (PRIMES) / sizeof (PRIMES[0]), cnt = i2 - i1;
