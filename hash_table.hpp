@@ -507,7 +507,7 @@ struct hash_table
         }
     }
 
-  bool erase (const KeyT& key)
+  bool _Erase (const KeyT& key, optional<ValT> *outp = nullptr)
     {
       cs_guard g;
 
@@ -536,12 +536,28 @@ struct hash_table
               ep[idx] = key_traits::DELT;
               key_traits().destroy (oldk);
               val_traits().destroy (oldv);
+
+              if (outp)
+                *outp = val_traits().get (oldv);
+
               return (true);
             }
 
           // The table was being rehashed - retry.
           this->_Rehash ();
         }
+    }
+
+  bool erase (const KeyT& key)
+    {
+      return (this->_Erase (key));
+    }
+
+  optional<ValT> remove (const KeyT& key)
+    {
+      optional<ValT> ret;
+      this->_Erase (key, &ret);
+      return (ret);
     }
 
   struct iterator : public detail::ht_iter<key_traits, val_traits>
