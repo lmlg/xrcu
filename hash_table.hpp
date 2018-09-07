@@ -35,6 +35,7 @@ struct ht_traits
   static const uintptr_t XBIT = (uintptr_t)1 << (sizeof (uintptr_t) * 8 - 1);
   static const uintptr_t FREE = (~(uintptr_t)0) & ~XBIT;
   static const uintptr_t DELT = FREE >> 1;
+  typedef T value_type;
 
   uintptr_t make (T val) const noexcept
     {
@@ -56,6 +57,7 @@ struct ht_traits<false, T>
   static const uintptr_t XBIT = 1;
   static const uintptr_t FREE = 2;
   static const uintptr_t DELT = 4;
+  typedef T value_type;
 
   uintptr_t make (const T& val) const
     {
@@ -212,6 +214,25 @@ struct ht_iter : public cs_guard
     {
       return (!(*this == right));
     }
+};
+
+struct ht_inserter
+{
+  uintptr_t value;
+  ht_inserter (uintptr_t v) : value (v) {}
+
+  uintptr_t call0 () const noexcept
+    {
+      return (this->value);
+    }
+
+  template <class T>
+  uintptr_t call1 (const T&) const noexcept
+    {
+      return (this->value);
+    }
+
+  void free (uintptr_t) {}
 };
 
 } // namespace detail
@@ -442,23 +463,10 @@ struct hash_table
         }
     }
 
-  bool insert (const KeyT& key, const ValT& val)
+  template <class Fn, class ...Args>
+  bool _Upsert (uintptr_t k, const KeyT& key, Fn f, Args... args)
     {
-      uintptr_t k = key_traits().make (key);
-      uintptr_t v;
-
-      try
-        {
-          v = val_traits().make (val);
-        }
-      catch (...)
-        {
-          val_traits().free (k);
-          throw;
-        }
-
       cs_guard g;
-
       while (true)
         {
           auto vp = this->vec;
@@ -471,7 +479,7 @@ struct hash_table
               if (this->grow_limit.load (std::memory_order_relaxed) > 0)
                 {
                   this->grow_limit.fetch_sub (1, std::memory_order_acq_rel);
-
+                  uintptr_t v = f.call0 (args...);
 #ifdef XRCU_HAVE_XATOMIC_DCAS
                   if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
                       val_traits::FREE, k, v))
@@ -484,6 +492,7 @@ struct hash_table
                       return (empty);
                     }
 
+                  f.free (v);
                   continue;
                 }
             }
@@ -491,19 +500,85 @@ struct hash_table
             {
               uintptr_t tmp = ep[idx + 1];
               if (tmp != val_traits::DELT && tmp != val_traits::FREE &&
-                  (tmp & val_traits::XBIT) == 0 &&
-                  xatomic_cas_bool (ep + idx + 1, tmp, v))
+                  (tmp & val_traits::XBIT) == 0)
                 {
-                  key_traits().free (k);
-                  val_traits().destroy (tmp);
-                  return (empty);
-                }
+                  uintptr_t v = f.call1 (val_traits().get (tmp), args...);
+                  if (xatomic_cas_bool (ep + idx + 1, tmp, v))
+                    {
+                      key_traits().destroy (k);
+                      val_traits().destroy (tmp);
+                      return (empty);
+                    }
 
-              continue;
+                  f.free (v);
+                  continue;
+                }
             }
 
           // The table was being rehashed - retry.
           this->_Rehash ();
+        }
+    }
+
+  bool insert (const KeyT& key, const ValT& val)
+    {
+      uintptr_t k = key_traits().make (key), v = val_traits::XBIT;
+
+      try
+        {
+          v = val_traits().make (val);
+          return (this->_Upsert (k, key, detail::ht_inserter (v)));
+        }
+      catch (...)
+        {
+          key_traits().free (k);
+          if (v != val_traits::XBIT)
+            val_traits().free (v);
+
+          throw;
+        }
+    }
+
+  template <class Fn, class Vtraits>
+  struct _Updater
+    {
+      Fn fct;
+
+      _Updater (Fn f) : fct (f) {}
+
+      template <class ...Args>
+      uintptr_t call0 (Args ...args)
+        {
+          auto tmp = this->fct ((typename Vtraits::value_type ()), args...);
+          return (Vtraits().make (tmp));
+        }
+
+      template <class T, class ...Args>
+      uintptr_t call1 (const T& x, Args ...args)
+        {
+          return (Vtraits().make (this->fct (x, args...)));
+        }
+
+      void free (uintptr_t x)
+        {
+          Vtraits().free (x);
+        }
+    };
+
+  template <class Fn, class ...Args>
+  bool update (const KeyT& key, Fn f, Args... args)
+    {
+      uintptr_t k = key_traits().make (key);
+
+      try
+        {
+          return (this->_Upsert (k, key,
+            _Updater<Fn, val_traits> (f), args...));
+        }
+      catch (...)
+        {
+          key_traits().free (k);
+          throw;
         }
     }
 

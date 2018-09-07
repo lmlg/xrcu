@@ -72,7 +72,6 @@ ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val)
   auto ret = ht_vector::make (tsize);
 #endif
 
-
   for (size_t i = TABVEC_OVERHEAD; i < tsize; i += 2)
     ret->data[i] = key, ret->data[i + 1] = val;
 
