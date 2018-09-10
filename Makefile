@@ -14,10 +14,10 @@ CXXFLAGS += $(CXXFLAGS_AUTO)
 
 all: $(ALL_LIBS)
 
-%.o: %.cpp
+%.o: %.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-%.lo: %.cpp
+%.lo: %.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
 
 libxrcu.a: $(OBJS)

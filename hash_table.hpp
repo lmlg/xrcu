@@ -694,13 +694,12 @@ struct hash_table
 
   void _Assign_vector (detail::ht_vector *nv, size_t nelems, intptr_t gt)
     {
-      // First step: Lock the table and prevent any further insertions.
+      // First step: Lock the table.
       this->lock.acquire ();
-      this->grow_limit.store (0, std::memory_order_release);
       auto prev = this->vec;
 
       // Second step: Finalize every valid key/value pair.
-      for (size_t i = detail::table_idx (0) + 1; i < this->vec->size (); i += 2)
+      for (size_t i = detail::table_idx (0) + 1; i < prev->size (); i += 2)
         {
           uintptr_t v = xatomic_or (&prev->data[i], val_traits::XBIT);
           if (v != val_traits::FREE && v != val_traits::DELT)
@@ -713,7 +712,6 @@ struct hash_table
       // Third step: Set up the new vector and parameters.
       this->nelems.store (nelems, std::memory_order_relaxed);
       this->grow_limit.store (gt, std::memory_order_relaxed);
-      std::atomic_thread_fence (std::memory_order_release);
       this->vec = nv;
       this->lock.release ();
       finalize (prev);
