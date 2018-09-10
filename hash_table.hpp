@@ -120,12 +120,6 @@ struct alignas (uintptr_t) ht_vector : public finalizable
     {
       return (table_idx (this->entries ()));
     }
-
-  void mark (uintptr_t bit)
-    {
-      for (size_t i = table_idx (0) + 1; i < this->size (); i += 2)
-        (void)xatomic_or (&this->data[i], bit);
-    }
 };
 
 inline size_t
@@ -469,6 +463,7 @@ struct hash_table
   bool _Upsert (uintptr_t k, const KeyT& key, Fn f, Args... args)
     {
       cs_guard g;
+
       while (true)
         {
           auto vp = this->vec;
@@ -703,17 +698,14 @@ struct hash_table
       this->lock.acquire ();
       this->grow_limit.store (0, std::memory_order_release);
       auto prev = this->vec;
-      prev->mark (val_traits::XBIT);
 
       // Second step: Finalize every valid key/value pair.
-      for (size_t i = detail::table_idx (0); i < this->vec->size (); i += 2)
+      for (size_t i = detail::table_idx (0) + 1; i < this->vec->size (); i += 2)
         {
-          uintptr_t k = prev->data[i],
-            v = prev->data[i + 1] & ~val_traits::XBIT;
-          if (k != key_traits::FREE && k != key_traits::DELT &&
-              v != val_traits::FREE && v != val_traits::DELT)
+          uintptr_t v = xatomic_or (&prev->data[i], val_traits::XBIT);
+          if (v != val_traits::FREE && v != val_traits::DELT)
             {
-              key_traits().destroy (k);
+              key_traits().destroy (prev->data[i - 1]);
               val_traits().destroy (v);
             }
         }
@@ -738,11 +730,9 @@ struct hash_table
   void assign (Iter first, Iter last)
     {
       self_type tmp (first, last, 0, this->mv_ratio);
-      auto nv = tmp.vec;
-      tmp.vec = nullptr;
-
-      this->_Assign_vector (nv, tmp.size (),
+      this->_Assign_vector (tmp.vec, tmp.size (),
         tmp.grow_limit.load (std::memory_order_relaxed));
+      tmp.vec = nullptr;
     }
 
   void assign (std::initializer_list<std::pair<KeyT, ValT> > lst)

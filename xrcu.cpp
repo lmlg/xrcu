@@ -97,6 +97,10 @@ struct registry
 static registry global_reg;
 
 // Maximum number of pending finalizers before flushing.
+#ifndef XRCU_MAX_FINS
+#  define XRCU_MAX_FINS   1000
+#endif
+
 static const unsigned int MAX_FINS = XRCU_MAX_FINS;
 
 struct tl_data : public td_link
