@@ -378,6 +378,22 @@ struct stack
       return (!(*this < right));
     }
 
+  void clear ()
+    {
+      *this = stack<T> ();
+    }
+
+  template <class Iter>
+  void assign (Iter first, Iter last)
+    {
+      *this = stack<T> (first, last);
+    }
+
+  void assign (std::initializer_list<T> lst)
+    {
+      this->assign (lst.begin (), lst.end ());
+    }
+
   ~stack ()
     {
       delete this->_Base ();

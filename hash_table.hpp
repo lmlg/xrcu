@@ -737,12 +737,17 @@ struct hash_table
   template <class Iter>
   void assign (Iter first, Iter last)
     {
-      self_type tmp (first, last);
+      self_type tmp (first, last, 0, this->mv_ratio);
       auto nv = tmp.vec;
       tmp.vec = nullptr;
 
       this->_Assign_vector (nv, tmp.size (),
         tmp.grow_limit.load (std::memory_order_relaxed));
+    }
+
+  void assign (std::initializer_list<std::pair<KeyT, ValT> > lst)
+    {
+      this->assign (lst.begin (), lst.end ());
     }
 
   self_type& operator= (const self_type& right)
@@ -771,5 +776,17 @@ struct hash_table
 };
 
 } // namespace xrcu
+
+namespace std
+{
+
+template <class KeyT, class ValT, class EqFn, class HashFn>
+void swap (xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& left,
+           xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& right)
+{
+  left.swap (right);
+}
+
+}
 
 #endif
