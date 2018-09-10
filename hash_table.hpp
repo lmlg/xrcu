@@ -787,6 +787,6 @@ void swap (xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& left,
   left.swap (right);
 }
 
-}
+} // namespace std
 
 #endif

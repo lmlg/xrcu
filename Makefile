@@ -10,6 +10,7 @@ HEADERS = xrcu.hpp stack.hpp hash_table.hpp
 AR = $(CROSS_COMPILE)ar
 RANLIB = $(CROSS_COMPILE)ranlib
 LOBJS = $(OBJS:.o=.lo)
+CXXFLAGS += $(CXXFLAGS_AUTO)
 
 all: $(ALL_LIBS)
 

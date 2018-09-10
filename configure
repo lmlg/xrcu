@@ -29,6 +29,7 @@ Optional features:
   --enable-warnings       build with extensive warnings [yes]
   --enable-shared         build shared library [yes]
   --enable-static         build static library [no]
+  --max-finalizers=N      maximum number of pending finalizers
 
 Environment variables you may set:
   CXX                     C++ compiler [auto detected]
@@ -92,6 +93,7 @@ debug=no
 warnings=yes
 shared=yes
 static=no
+maxfins=1000
 
 for arg ; do
 case "$arg" in
@@ -114,6 +116,7 @@ case "$arg" in
 --enable-*|--disable-*|--with-*|--without-*|--*dir=*) ;;
 --host=*|--target=*) target=${arg#*=} ;;
 --build=*) build=${arg#*=} ;;
+--max-finalizers=*) maxfins=${arg#*=} ;;
 -* ) echo "$0: unknown option $arg" ;;
 CXX=*) CXX=${arg#*=} ;;
 CXXFLAGS=*) CXXFLAGS=${arg#*=} ;;
@@ -200,8 +203,12 @@ tryflag CXXFLAGS_AUTO -Wno-missing-braces
 tryflag CXXFLAGS_AUTO -Wno-unused-value
 tryflag CXXFLAGS_AUTO -Wno-unused-but-set-variable
 tryflag CXXFLAGS_AUTO -Wno-unknown-pragmas
-tryflag CXXFLAGS_AUTO -Wno-pointer-to-int-cast
 fi
+
+case $maxfins in
+  ''|*[!0-9]*) echo "--max-finalizers must be an integer"; exit 1 ;;
+  *) ;;
+esac
 
 printf "creating config.mak... "
 
@@ -221,7 +228,7 @@ bindir = $bindir
 libdir = $libdir
 includedir = $includedir
 CXX = $CXX
-CXXFLAGS = $CXXFLAGS
+CXXFLAGS = $CXXFLAGS -DXRCU_MAX_FINS=$maxfins
 CXXFLAGS_AUTO = $CXXFLAGS_AUTO
 CXXFLAGS_EXTRA = $CXXFLAGS_EXTRA
 LDFLAGS = $LDFLAGS

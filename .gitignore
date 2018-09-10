@@ -2,4 +2,6 @@
 *.o
 *.out
 *.swp
+*.so
+*.a
 config.mak
