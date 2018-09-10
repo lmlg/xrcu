@@ -14,8 +14,6 @@ Configuration settings:
 
 Installation directories:
   --prefix=prefix         main installation prefix [/usr/local]
-  --exec-prefix=eprefix   installation prefix for executable files [prefix]
-  --bindir=dir            user executables [eprefix]
   --libdir=dir            library files [prefix/lib]
   --includedir=dir        include files [prefix/include]
 
@@ -85,8 +83,6 @@ LDFLAGS_AUTO=
 LDFLAGS_TRY=
 srcdir=
 prefix=/usr/local
-exec_prefix='$(prefix)'
-bindir='$(exec_prefix)/bin'
 libdir='$(prefix)/lib'
 includedir='$(prefix)/include'
 debug=no
@@ -100,8 +96,6 @@ case "$arg" in
 --help|-h) usage ;;
 --srcdir=*) srcdir=${arg#*=} ;;
 --prefix=*) prefix=${arg#*=} ;;
---exec-prefix=*) exec_prefix=${arg#*=} ;;
---bindir=*) bindir=${arg#*=} ;;
 --libdir=*) libdir=${arg#*=} ;;
 --includedir=*) includedir=${arg#*=} ;;
 --syslibdir=*) syslibdir=${arg#*=} ;;
@@ -127,7 +121,7 @@ CROSS_COMPILE=*) CROSS_COMPILE=${arg#*=} ;;
 esac
 done
 
-for i in srcdir prefix exec_prefix bindir libdir includedir ; do
+for i in srcdir prefix libdir includedir ; do
 stripdir $i
 done
 
@@ -223,8 +217,6 @@ cat << EOF
 # Any changes made here will be lost if configure is re-run
 srcdir = $srcdir
 prefix = $prefix
-exec_prefix = $exec_prefix
-bindir = $bindir
 libdir = $libdir
 includedir = $includedir
 CXX = $CXX

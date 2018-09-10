@@ -30,7 +30,7 @@ libxrcu.so: $(LOBJS)
 
 install: $(ALL_LIBS)
 	mkdir -p $(libdir)/xrcu $(includedir)/xrcu
-	cp libxrcu.* $(libdir)/xrcu
+	cp libxrcu* $(libdir)/xrcu
 	cp $(HEADERS) $(includedir)/xrcu
 
 clean:
