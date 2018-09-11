@@ -431,37 +431,33 @@ struct hash_table
         }
     }
 
+  uintptr_t _Find (const KeyT& key) const
+    {
+      auto vp = this->vec;
+      size_t idx = this->_Probe (key, vp, false);
+      return (idx == (size_t)-1 ? val_traits::DELT :
+        vp->data[idx + 1] & ~val_traits::XBIT);
+    }
+
   optional<ValT> find (const KeyT& key) const
     {
       cs_guard g;
-
-      while (true)
-        {
-          auto vp = this->vec;
-          size_t idx = this->_Probe (key, vp, false);
-          if (idx == (size_t)-1)
-            return (optional<ValT> ());
-
-          uintptr_t val = vp->data[idx + 1] & ~val_traits::XBIT;
-          return (val == val_traits::DELT ? optional<ValT> () :
-            optional<ValT> (val_traits().get (val)));
-        }
+      uintptr_t val = this->_Find (key);
+      return (val == val_traits::DELT ? optional<ValT> () :
+        optional<ValT> (val_traits().get (val)));
     }
 
   ValT find (const KeyT& key, const ValT& dfl) const
     {
       cs_guard g;
+      uintptr_t val = this->_Find (key);
+      return (val == val_traits::DELT ? dfl : val_traits().get (val));
+    }
 
-      while (true)
-        {
-          auto vp = this->vec;
-          size_t idx = this->_Probe (key, vp, false);
-          if (idx == (size_t)-1)
-            return (dfl);
-
-          uintptr_t val = vp->data[idx + 1] & ~val_traits::XBIT;
-          return (val == val_traits::DELT ? dfl : val_traits().get (val));
-        }
+  bool contains (const KeyT& key) const
+    {
+      cs_guard g;
+      return (this->_Find (key) != val_traits::DELT);
     }
 
   template <class Fn, class ...Args>
