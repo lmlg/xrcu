@@ -47,10 +47,7 @@ struct stack_base
       this->size.store (sz, std::memory_order_relaxed);
     }
 
-  stack_node_base* root () const
-    {
-      return (this->rnode.load (std::memory_order_relaxed));
-    }
+  stack_node_base* root () const;
 
   void push_node (stack_node_base *nodep);
   stack_node_base* pop_node ();

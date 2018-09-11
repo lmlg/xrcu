@@ -129,7 +129,7 @@ secondary_hash (size_t hval)
   return (keys[hval % (sizeof (keys) / sizeof (keys[0]))]);
 }
 
-extern size_t find_hsize (size_t size, float mvr, size_t& pidx);
+extern size_t find_hsize (size_t size, float ldf, size_t& pidx);
 
 extern ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val);
 
@@ -253,29 +253,29 @@ struct hash_table
   detail::ht_vector *vec;
   EqFn eqfn;
   HashFn hashfn;
-  float mv_ratio = 0.85f;
+  float loadf = 0.85f;
   std::atomic<intptr_t> grow_limit;
   detail::ht_lock lock;
   std::atomic<size_t> nelems;
 
-  float load_factor (float mvr)
+  float load_factor (float ldf)
     {
-      float ret = this->mv_ratio;
-      if (mvr >= 0.2f && mvr <= 0.9f)
-        this->mv_ratio = mvr;
+      float ret = this->loadf;
+      if (ldf >= 0.2f && ldf <= 0.9f)
+        this->loadf = ldf;
 
       return (ret);
     }
 
   float load_factor () const
     {
-      return (this->mv_ratio);
+      return (this->loadf);
     }
 
-  void _Init (size_t size, float mvr, EqFn e, HashFn h)
+  void _Init (size_t size, float ldf, EqFn e, HashFn h)
     {
-      this->load_factor (mvr);
-      size_t pidx, gt = detail::find_hsize (size, this->mv_ratio, pidx);
+      this->load_factor (ldf);
+      size_t pidx, gt = detail::find_hsize (size, this->loadf, pidx);
 
       this->vec = detail::make_htvec (pidx,
         key_traits::FREE, val_traits::FREE);
@@ -285,25 +285,25 @@ struct hash_table
       this->nelems.store (0, std::memory_order_relaxed);
     }
 
-  hash_table (size_t size = 0, float mvr = 0.85f,
+  hash_table (size_t size = 0, float ldf = 0.85f,
       EqFn e = EqFn (), HashFn h = HashFn ())
     {
-      this->_Init (size, mvr, e, h);
+      this->_Init (size, ldf, e, h);
     }
 
   template <class Iter>
-  hash_table (Iter first, Iter last, size_t size = 0, float mvr = 0.85f,
+  hash_table (Iter first, Iter last, size_t size = 0, float ldf = 0.85f,
       EqFn e = EqFn (), HashFn h = HashFn ())
     {
-      this->_Init (size, mvr, e, h);
+      this->_Init (size, ldf, e, h);
       for (; first != last; ++first)
         this->insert ((*first).first, (*first).second);
     }
 
   hash_table (std::initializer_list<std::pair<KeyT, ValT> > lst,
-      size_t size = 0, float mvr = 0.85f,
+      size_t size = 0, float ldf = 0.85f,
       EqFn e = EqFn (), HashFn h = HashFn ()) :
-      hash_table (lst.begin (), lst.end (), size, mvr, e, h)
+      hash_table (lst.begin (), lst.end (), size, ldf, e, h)
     {
     }
 
@@ -322,19 +322,24 @@ struct hash_table
       return (this->nelems.load (std::memory_order_relaxed));
     }
 
+  bool empty () const
+    {
+      return (this->size () == 0);
+    }
+
   size_t _Probe (const KeyT& key, const detail::ht_vector *vp,
-      bool put_p, bool& empty) const
+      bool put_p, bool& found) const
     {
       size_t code = this->hashfn (key);
       size_t entries = vp->entries ();
       size_t idx = code % entries;
       size_t vidx = detail::table_idx (idx);
 
-      empty = false;
+      found = false;
       uintptr_t k = vp->data[vidx];
 
       if (k == key_traits::FREE)
-        return (put_p ? (empty = true, vidx) : (size_t)-1);
+        return (put_p ? (found = true, vidx) : (size_t)-1);
       else if (this->eqfn (key_traits().get (k), key))
         return (vidx);
 
@@ -350,7 +355,7 @@ struct hash_table
           k = vp->data[vidx];
 
           if (k == key_traits::FREE)
-            return (put_p ? (empty = true, vidx) : (size_t)-1);
+            return (put_p ? (found = true, vidx) : (size_t)-1);
           else if (this->eqfn (key_traits().get (k), key))
             return (vidx);
         }
@@ -414,7 +419,7 @@ struct hash_table
           s.vector = nullptr;
 
           this->nelems.store (nelem, std::memory_order_relaxed);
-          this->grow_limit.store ((intptr_t)(this->mv_ratio *
+          this->grow_limit.store ((intptr_t)(this->loadf *
               np->entries ()) - nelem, std::memory_order_relaxed);
           std::atomic_thread_fence (std::memory_order_release);
 
@@ -468,10 +473,10 @@ struct hash_table
         {
           auto vp = this->vec;
           uintptr_t *ep = vp->data;
-          bool empty;
-          size_t idx = this->_Probe (key, vp, true, empty);
+          bool found;
+          size_t idx = this->_Probe (key, vp, true, found);
 
-          if (empty)
+          if (found)
             {
               if (this->grow_limit.load (std::memory_order_relaxed) > 0)
                 {
@@ -486,7 +491,7 @@ struct hash_table
 #endif
                     {
                       this->nelems.fetch_add (1, std::memory_order_acq_rel);
-                      return (empty);
+                      return (found);
                     }
 
                   f.free (v);
@@ -504,7 +509,7 @@ struct hash_table
                     {
                       key_traits().free (k);
                       val_traits().destroy (tmp);
-                      return (empty);
+                      return (found);
                     }
 
                   f.free (v);
@@ -712,6 +717,8 @@ struct hash_table
       // Third step: Set up the new vector and parameters.
       this->nelems.store (nelems, std::memory_order_relaxed);
       this->grow_limit.store (gt, std::memory_order_relaxed);
+      std::atomic_thread_fence (std::memory_order_release);
+
       this->vec = nv;
       this->lock.release ();
       finalize (prev);
@@ -719,7 +726,7 @@ struct hash_table
 
   void clear ()
     {
-      size_t pidx, gt = detail::find_hsize (0, this->mv_ratio, pidx);
+      size_t pidx, gt = detail::find_hsize (0, this->loadf, pidx);
       auto nv = detail::make_htvec (pidx, key_traits::FREE, val_traits::FREE);
       this->_Assign_vector (nv, 0, gt);
     }
@@ -727,7 +734,7 @@ struct hash_table
   template <class Iter>
   void assign (Iter first, Iter last)
     {
-      self_type tmp (first, last, 0, this->mv_ratio);
+      self_type tmp (first, last, 0, this->loadf);
       this->_Assign_vector (tmp.vec, tmp.size (),
         tmp.grow_limit.load (std::memory_order_relaxed));
       tmp.vec = nullptr;

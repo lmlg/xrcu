@@ -10,6 +10,18 @@ namespace detail
 
 static stack_node_base* const NODE_SPIN = (stack_node_base *)1;
 
+stack_node_base* stack_base::root () const
+{
+  while (true)
+    {
+      auto ret = this->rnode.load (std::memory_order_relaxed);
+      if (ret != NODE_SPIN)
+        return (ret);
+
+      xatomic_spin_nop ();
+    }
+}
+
 void stack_base::push_node (stack_node_base *nodep)
 {
   while (true)
