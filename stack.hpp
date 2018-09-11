@@ -204,8 +204,10 @@ struct stack
     {
     }
 
-  stack (stack<T>&& right) : stack (right.begin (), right.end ())
+  stack (stack<T>&& right)
     {
+      this->basep.store (right.basep.load (std::memory_order_relaxed),
+                         std::memory_order_relaxed);
     }
 
   void push (const T& value)
@@ -323,6 +325,14 @@ struct stack
                                         std::memory_order_acq_rel);
 
       tmp.basep.store (nullptr, std::memory_order_relaxed);
+      finalize (prev);
+      return (*this);
+    }
+
+  stack<T>& operator= (stack<T>&& right)
+    {
+      auto prev = this->basep.exchange (right._Base (),
+                                        std::memory_order_acq_rel);
       finalize (prev);
       return (*this);
     }

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <type_traits>
 #include <initializer_list>
+#include <iostream>
 
 namespace std
 {
@@ -312,9 +313,16 @@ struct hash_table
     {
     }
 
-  hash_table (self_type&& right) :
-      hash_table (right.begin (), right.end ())
+  hash_table (self_type&& right)
     {
+      this->vec = right.vec;
+      this->eqfn = right.eqfn;
+      this->hashfn = right.hashfn;
+      this->loadf = right.loadf;
+      this->nelems.store (right.nelems.load (std::memory_order_relaxed),
+                          std::memory_order_relaxed);
+      this->grow_limit.store ((intptr_t)(this->loadf * this->size ()),
+                              std::memory_order_relaxed);
     }
 
   size_t size () const
@@ -744,6 +752,14 @@ struct hash_table
   self_type& operator= (const self_type& right)
     {
       this->assign (right.begin (), right.end ());
+      return (*this);
+    }
+
+  self_type& operator= (self_type&& right)
+    {
+      this->_Assign_vector (right.vec, right.size (),
+        right.grow_limit.load (std::memory_order_relaxed));
+      this->loadf = right.loadf;
       return (*this);
     }
 
