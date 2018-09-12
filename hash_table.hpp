@@ -259,12 +259,18 @@ struct hash_table
   detail::ht_lock lock;
   std::atomic<size_t> nelems;
 
+  void _Set_loadf (float ldf)
+    {
+      if (ldf >= 0.4f && ldf <= 0.9f)
+        this->loadf = ldf;
+    }
+
   float load_factor (float ldf)
     {
+      this->lock.acquire ();
       float ret = this->loadf;
-      if (ldf >= 0.2f && ldf <= 0.9f)
-        this->loadf = ldf;
-
+      this->_Set_loadf (ldf);
+      this->lock.release ();
       return (ret);
     }
 
@@ -275,7 +281,7 @@ struct hash_table
 
   void _Init (size_t size, float ldf, EqFn e, HashFn h)
     {
-      this->load_factor (ldf);
+      this->_Set_loadf (ldf);
       size_t pidx, gt = detail::find_hsize (size, this->loadf, pidx);
 
       this->vec = detail::make_htvec (pidx,
@@ -468,6 +474,21 @@ struct hash_table
       return (this->_Find (key) != val_traits::DELT);
     }
 
+  bool _Decr_limit ()
+    {
+      while (true)
+        {
+          auto prev = this->grow_limit.load (std::memory_order_relaxed);
+          if (prev == 0)
+            return (false);
+          else if (this->grow_limit.compare_exchange_weak (prev, prev - 1,
+              std::memory_order_acq_rel, std::memory_order_relaxed))
+            return (true);
+
+          xatomic_spin_nop ();
+        }
+    }
+
   template <class Fn, class ...Args>
   bool _Upsert (uintptr_t k, const KeyT& key, Fn f, Args... args)
     {
@@ -480,29 +501,7 @@ struct hash_table
           bool found;
           size_t idx = this->_Probe (key, vp, true, found);
 
-          if (found)
-            {
-              if (this->grow_limit.load (std::memory_order_relaxed) > 0)
-                {
-                  this->grow_limit.fetch_sub (1, std::memory_order_acq_rel);
-                  uintptr_t v = f.call0 (args...);
-#ifdef XRCU_HAVE_XATOMIC_DCAS
-                  if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
-                      val_traits::FREE, k, v))
-#else
-                  if (xatomic_cas_bool (ep + idx + 0, key_traits::FREE, k) &&
-                      xatomic_cas_bool (ep + idx + 1, val_traits::FREE, v))
-#endif
-                    {
-                      this->nelems.fetch_add (1, std::memory_order_acq_rel);
-                      return (found);
-                    }
-
-                  f.free (v);
-                  continue;
-                }
-            }
-          else
+          if (!found)
             {
               uintptr_t tmp = ep[idx + 1];
               if (tmp != val_traits::DELT && tmp != val_traits::FREE &&
@@ -519,6 +518,24 @@ struct hash_table
                   f.free (v);
                   continue;
                 }
+            }
+          else if (this->_Decr_limit ())
+            {
+              uintptr_t v = f.call0 (args...);
+#ifdef XRCU_HAVE_XATOMIC_DCAS
+              if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
+                  val_traits::FREE, k, v))
+#else
+              if (xatomic_cas_bool (ep + idx + 0, key_traits::FREE, k) &&
+                  xatomic_cas_bool (ep + idx + 1, val_traits::FREE, v))
+#endif
+                {
+                  this->nelems.fetch_add (1, std::memory_order_acq_rel);
+                  return (found);
+                }
+
+              f.free (v);
+              continue;
             }
 
           // The table was being rehashed - retry.
@@ -761,6 +778,34 @@ struct hash_table
         right.grow_limit.load (std::memory_order_relaxed));
       this->loadf = right.loadf;
       return (*this);
+    }
+
+  void swap (self_type& right)
+    {
+      this->lock.acquire ();
+      this->grow_limit.store (0, std::memory_order_release);
+
+      right.lock.acquire ();
+      right.grow_limit.store (0, std::memory_order_release);
+
+      std::swap (this->vec, right.vec);
+      std::swap (this->eqfn, right.eqfn);
+      std::swap (this->hashfn, right.hashfn);
+      std::swap (this->loadf, right.loadf);
+
+      size_t sz = this->nelems.load (std::memory_order_acquire);
+
+      this->nelems.store (right.nelems.load (std::memory_order_acquire),
+                          std::memory_order_relaxed);
+      right.nelems.store (sz, std::memory_order_relaxed);
+
+      this->grow_limit.store ((intptr_t)(this->loadf *
+        this->entries ()) - this->size (), std::memory_order_release);
+      right.grow_limit.store ((intptr_t)(right.loadf *
+        right.entries ()) - right.size (), std::memory_order_release);
+
+      this->lock.release ();
+      right.lock.release ();
     }
 
   ~hash_table ()

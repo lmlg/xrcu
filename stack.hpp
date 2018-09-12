@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
-#include <type_traits>
 #include <initializer_list>
 
 namespace std
