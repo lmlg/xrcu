@@ -4,6 +4,7 @@
 #include "xrcu.hpp"
 #include "xatomic.hpp"
 #include "optional.hpp"
+#include "lwlock.hpp"
 #include <atomic>
 #include <functional>
 #include <cstdint>
@@ -81,45 +82,24 @@ struct ht_traits<false, T>
     }
 };
 
-const size_t TABVEC_OVERHEAD = 2;
-
 inline constexpr size_t table_idx (size_t idx)
 {
-  return (idx * 2 + TABVEC_OVERHEAD);
+  return (idx * 2);
 }
 
 struct alignas (uintptr_t) ht_vector : public finalizable
 {
   uintptr_t *data;
+  size_t entries;
+  size_t pidx;
 
   ht_vector (uintptr_t *ep) : data (ep) {}
 
-  static ht_vector* make (size_t n);
   void safe_destroy ();
-
-  uintptr_t& entries ()
-    {
-      return (this->data[0]);
-    }
-
-  uintptr_t entries () const
-    {
-      return (this->data[0]);
-    }
-
-  uintptr_t& pidx ()
-    {
-      return (this->data[1]);
-    }
-
-  uintptr_t pidx () const
-    {
-      return (this->data[1]);
-    }
 
   size_t size () const
     {
-      return (table_idx (this->entries ()));
+      return (table_idx (this->entries));
     }
 };
 
@@ -134,26 +114,13 @@ extern size_t find_hsize (size_t size, float ldf, size_t& pidx);
 
 extern ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val);
 
-struct ht_lock
-{
-  std::atomic_int lock;
-
-  ht_lock ()
-    {
-      this->lock.store (0, std::memory_order_relaxed);
-    }
-
-  void acquire ();
-  void release ();
-};
-
 struct ht_sentry
 {
-  ht_lock *lock;
+  lwlock *lock;
   uintptr_t xbit;
   ht_vector *vector = nullptr;
 
-  ht_sentry (ht_lock *lp, uintptr_t xb) : lock (lp), xbit (~xb)
+  ht_sentry (lwlock *lp, uintptr_t xb) : lock (lp), xbit (~xb)
     {
       this->lock->acquire ();
     }
@@ -172,7 +139,7 @@ template <class Ktraits, class Vtraits>
 struct ht_iter : public cs_guard
 {
   const ht_vector *vec = nullptr;
-  size_t idx = TABVEC_OVERHEAD;
+  size_t idx = 0;
   uintptr_t c_key;
   uintptr_t c_val;
   bool valid = false;
@@ -256,7 +223,7 @@ struct hash_table
   HashFn hashfn;
   float loadf = 0.85f;
   std::atomic<intptr_t> grow_limit;
-  detail::ht_lock lock;
+  lwlock lock;
   std::atomic<size_t> nelems;
 
   void _Set_loadf (float ldf)
@@ -345,7 +312,7 @@ struct hash_table
       bool put_p, bool& found) const
     {
       size_t code = this->hashfn (key);
-      size_t entries = vp->entries ();
+      size_t entries = vp->entries;
       size_t idx = code % entries;
       size_t vidx = detail::table_idx (idx);
 
@@ -384,7 +351,7 @@ struct hash_table
   size_t _Gprobe (uintptr_t key, detail::ht_vector *vp)
     {
       size_t code = this->hashfn (key_traits().get (key));
-      size_t entries = vp->entries ();
+      size_t entries = vp->entries;
       size_t idx = code % entries;
       size_t vidx = detail::table_idx (idx);
 
@@ -409,7 +376,7 @@ struct hash_table
       if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
         {
           auto old = this->vec;
-          auto np = detail::make_htvec (old->pidx () + 1,
+          auto np = detail::make_htvec (old->pidx + 1,
               key_traits::FREE, val_traits::FREE);
           size_t nelem = 0;
 
@@ -434,7 +401,7 @@ struct hash_table
 
           this->nelems.store (nelem, std::memory_order_relaxed);
           this->grow_limit.store ((intptr_t)(this->loadf *
-              np->entries ()) - nelem, std::memory_order_relaxed);
+              np->entries) - nelem, std::memory_order_relaxed);
           std::atomic_thread_fence (std::memory_order_release);
 
           /* At this point, another thread may decrement the growth limit
@@ -476,17 +443,11 @@ struct hash_table
 
   bool _Decr_limit ()
     {
-      while (true)
-        {
-          auto prev = this->grow_limit.load (std::memory_order_relaxed);
-          if (prev == 0)
-            return (false);
-          else if (this->grow_limit.compare_exchange_weak (prev, prev - 1,
-              std::memory_order_acq_rel, std::memory_order_relaxed))
-            return (true);
+      if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
+        return (false);
 
-          xatomic_spin_nop ();
-        }
+      this->grow_limit.fetch_sub (1, std::memory_order_acq_rel);
+      return (true);
     }
 
   template <class Fn, class ...Args>
@@ -780,32 +741,38 @@ struct hash_table
       return (*this);
     }
 
+  size_t _Count_nelems ()
+    {
+      size_t ret = 0;
+      for (size_t i = detail::table_idx (0) + 1; i < this->vec->size (); ++i)
+        {
+          auto prev = xatomic_or (&this->vec->data[i], val_traits::XBIT);
+          if (prev != val_traits::FREE && prev != val_traits::DELT)
+            ++ret;
+        }
+
+      return (ret);
+    }
+
   void swap (self_type& right)
     {
-      this->lock.acquire ();
-      this->grow_limit.store (0, std::memory_order_release);
-
-      right.lock.acquire ();
-      right.grow_limit.store (0, std::memory_order_release);
+      detail::ht_sentry s1 (&this->lock, ~val_traits::XBIT);
+      detail::ht_sentry s2 (&right.lock, ~val_traits::XBIT);
 
       std::swap (this->vec, right.vec);
       std::swap (this->eqfn, right.eqfn);
       std::swap (this->hashfn, right.hashfn);
       std::swap (this->loadf, right.loadf);
 
-      size_t sz = this->nelems.load (std::memory_order_acquire);
-
-      this->nelems.store (right.nelems.load (std::memory_order_acquire),
-                          std::memory_order_relaxed);
-      right.nelems.store (sz, std::memory_order_relaxed);
+      this->nelems.store (this->_Count_nelems (), std::memory_order_release);
+      right.nelems.store (right._Count_nelems (), std::memory_order_release);
 
       this->grow_limit.store ((intptr_t)(this->loadf *
-        this->entries ()) - this->size (), std::memory_order_release);
+        this->vec->entries) - this->size (), std::memory_order_release);
       right.grow_limit.store ((intptr_t)(right.loadf *
-        right.entries ()) - right.size (), std::memory_order_release);
+        right.vec->entries) - right.size (), std::memory_order_release);
 
-      this->lock.release ();
-      right.lock.release ();
+      // the sentries' destructos take care of unlocking and unmasking.
     }
 
   ~hash_table ()

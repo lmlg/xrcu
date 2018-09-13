@@ -30,49 +30,11 @@ xatomic_and (uintptr_t *ptr, uintptr_t val)
   (void)__atomic_and_fetch (ptr, val, __ATOMIC_ACQ_REL);
 }
 
-#elif defined (__INTEL_COMPILER)
-
 inline uintptr_t
-xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
+xatomic_swap (uintptr_t *ptr, uintptr_t val)
 {
-  return (__sync_bool_compare_and_swap (ptr, exp, nval));
+  return (__atomic_exchange_n (ptr, val, __ATOMIC_ACQ_REL));
 }
-
-inline uintptr_t
-xatomic_or (uintptr_t *ptr, uintptr_t val)
-{
-  return (__sync_fetch_and_or (ptr, val));
-}
-
-inline void
-xatomic_and (uintptr_t *ptr, uintptr_t val)
-{
-  (void)__sync_and_and_fetch (ptr, val);
-}
-
-#elif defined (_MSC_VER)
-
-#  if UINTPTR_MAX > 0xffffffffu
-
-#    pragma intrinsic (_InterlockedCompareExchange64)
-
-inline uintptr_t
-xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
-{
-  return ((uintptr_t)_InterlockedCompareExchange ((int64_t *)ptr, exp, nval));
-}
-
-#  else
-
-#    pragma intrinsic (_InterlockedCompareExchange)
-
-inline uintptr_t
-xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
-{
-  return ((uintptr_t)_InterlockedCompareExchange ((long *)ptr, exp, nval));
-}
-
-#  endif
 
 #else
 
@@ -87,6 +49,13 @@ xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 {
   return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).compare_exchange_weak
     (exp, nval, std::memory_order_acq_rel, std::memory_order_relaxed));
+}
+
+inline uintptr_t
+xatomic_swap (uintptr_t *ptr, uintptr_t val)
+{
+  return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).exchange
+    (ptr, val, std::memory_order_acq_rel));
 }
 
 #endif
@@ -298,7 +267,7 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
 
 #endif
 
-#if !defined (__GNUC__) && !defined (__INTEL_COMPILER)
+#if !defined (__GNUC__)
 
 inline uintptr_t
 xatomic_or (uintptr_t *ptr, uintptr_t val)

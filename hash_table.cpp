@@ -9,7 +9,7 @@ namespace xrcu
 namespace detail
 {
 
-ht_vector* ht_vector::make (size_t n)
+inline ht_vector* ht_vector_make (size_t n)
 {
   void *p = ::operator new (sizeof (ht_vector) + n * sizeof (uintptr_t));
   return new (p) ht_vector ((uintptr_t *)((char *)p + sizeof (ht_vector)));
@@ -58,53 +58,22 @@ ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val)
 {
   size_t entries = PRIMES[pidx], tsize = table_idx (entries);
 #ifdef XRCU_HAVE_XATOMIC_DCAS
-  auto ret = ht_vector::make (tsize + 1);
+  auto ret = ht_vector_make (tsize + 1);
 
   // Ensure correct alignment for double-width CAS.
   if ((uintptr_t)ret->data % (2 * sizeof (uintptr_t)) != 0)
     ++ret->data;
 #else
-  auto ret = ht_vector::make (tsize);
+  auto ret = ht_vector_make (tsize);
 #endif
 
-  for (size_t i = TABVEC_OVERHEAD; i < tsize; i += 2)
+  for (size_t i = 0; i < tsize; i += 2)
     ret->data[i] = key, ret->data[i + 1] = val;
 
-  ret->entries() = entries;
-  ret->pidx() = pidx;
+  ret->entries = entries;
+  ret->pidx = pidx;
 
   return (ret);
-}
-
-void ht_lock::acquire ()
-{
-  bool sleep = false;
-  int retries = 0, zv = 0;
-  const int MAX_RETRIES = 100;
-  const int MAX_SPINS = 1000;
-
-  for ( ; ; zv = 0)
-    {
-      if (this->lock.compare_exchange_weak (zv, 1,
-          std::memory_order_acquire, std::memory_order_relaxed))
-        return;
-      else if (sleep)
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-      else
-        {
-          for (int i = 0; i < MAX_SPINS &&
-              this->lock.load (std::memory_order_relaxed) != 0; ++i)
-            xatomic_spin_nop ();
-
-          if (++retries == MAX_RETRIES)
-            sleep = true;
-        }
-    }
-}
-
-void ht_lock::release ()
-{
-  this->lock.store (0, std::memory_order_release);
 }
 
 } // namespace detail
