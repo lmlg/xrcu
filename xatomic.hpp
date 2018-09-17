@@ -12,10 +12,11 @@ namespace xrcu
       (__clang_major__ == 3 && __clang_minor__ >= 8)))
 
 inline uintptr_t
-xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
+xatomic_cas (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 {
-  return (__atomic_compare_exchange_n (ptr, &exp, nval, 0,
-    __ATOMIC_ACQ_REL, __ATOMIC_RELAXED));
+  __atomic_compare_exchange_n (ptr, &exp, nval, 0,
+    __ATOMIC_ACQ_REL, __ATOMIC_RELAXED);
+  return (exp);
 }
 
 inline uintptr_t
@@ -45,10 +46,11 @@ static_assert (sizeof (uintptr_t) == sizeof (std::atomic_uintptr_t) &&
   "unsupported compiler (uintptr_t and atomic_uintptr_t mismatch)");
 
 inline uintptr_t
-xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
+xatomic_cas (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 {
-  return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).compare_exchange_weak
-    (exp, nval, std::memory_order_acq_rel, std::memory_order_relaxed));
+  reinterpret_cast<std::atomic_uintptr_t&>(ptr).compare_exchange_weak
+    (exp, nval, std::memory_order_acq_rel, std::memory_order_relaxed);
+  return (exp);
 }
 
 inline uintptr_t
@@ -56,6 +58,32 @@ xatomic_swap (uintptr_t *ptr, uintptr_t val)
 {
   return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).exchange
     (ptr, val, std::memory_order_acq_rel));
+}
+
+inline uintptr_t
+xatomic_or (uintptr_t *ptr, uintptr_t val)
+{
+  while (true)
+    {
+      uintptr_t ret = *ptr;
+      if (xatomic_cas (ptr, ret, ret | val) == ret)
+        return (ret);
+
+      xatomic_spin_nop ();
+    }
+}
+
+inline void
+xatomic_and (uintptr_t *ptr, uintptr_t val)
+{
+  while (true)
+    {
+      uintptr_t ret = *ptr;
+      if (xatomic_cas (ptr, ret, ret & val) == ret)
+        return;
+
+      xatomic_spin_nop ();
+    }
 }
 
 #endif
@@ -91,6 +119,12 @@ xatomic_spin_nop ()
 }
 
 #endif
+
+inline bool
+xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
+{
+  return (xatomic_cas (ptr, exp, nval) == exp);
+}
 
 // Try to define double-width CAS.
 
@@ -264,36 +298,6 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
 }
 
 #  endif
-
-#endif
-
-#if !defined (__GNUC__)
-
-inline uintptr_t
-xatomic_or (uintptr_t *ptr, uintptr_t val)
-{
-  while (true)
-    {
-      uintptr_t ret = *ptr;
-      if (xatomic_cas_bool (ptr, ret, ret | val))
-        return (ret);
-
-      xatomic_spin_nop ();
-    }
-}
-
-inline void
-xatomic_and (uintptr_t *ptr, uintptr_t val)
-{
-  while (true)
-    {
-      uintptr_t ret = *ptr;
-      if (xatomic_cas_bool (ptr, ret, ret & val))
-        return;
-
-      xatomic_spin_nop ();
-    }
-}
 
 #endif
 

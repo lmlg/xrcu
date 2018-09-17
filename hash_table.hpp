@@ -771,8 +771,6 @@ struct hash_table
         this->vec->entries) - this->size (), std::memory_order_release);
       right.grow_limit.store ((intptr_t)(right.loadf *
         right.vec->entries) - right.size (), std::memory_order_release);
-
-      // the sentries' destructos take care of unlocking and unmasking.
     }
 
   ~hash_table ()
