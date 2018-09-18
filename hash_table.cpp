@@ -12,7 +12,7 @@ namespace detail
 inline ht_vector* ht_vector_make (size_t n)
 {
   void *p = ::operator new (sizeof (ht_vector) + n * sizeof (uintptr_t));
-  return new (p) ht_vector ((uintptr_t *)((char *)p + sizeof (ht_vector)));
+  return (new (p) ht_vector ((uintptr_t *)((char *)p + sizeof (ht_vector))));
 }
 
 void ht_vector::safe_destroy ()
