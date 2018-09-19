@@ -14,73 +14,76 @@ namespace xrcu
 namespace detail
 {
 
-struct sl_node_base
-{
-  unsigned int nlvl;
-  uintptr_t *next;
-
-  sl_node_base (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np) {}
-
-  static sl_node_base* alloc (unsigned int lvl, size_t size);
-  static void dealloc (void *ptr);
-};
+void* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp);
+void sl_dealloc_node (void *base);
 
 template <class T>
-struct sl_node : public sl_node_base, finalizable
+struct sl_node : public finalizable
 {
-  T key;
+  unsigned int nlvl;
+  optional<T> key;
+  uintptr_t *next;
+
+  void init (unsigned int lvl, uintptr_t *np)
+    {
+      this->nlvl = lvl;
+      this->next = np;
+    }
 
   static sl_node<T>* copy (unsigned int lvl, const T& k)
     {
-      auto self = (sl_node<T> *)sl_node_base::alloc (lvl, sizeof (*self));
+      uintptr_t *np;
+      auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
+
+      self->init (lvl, np);
       try
         {
-          new (&self->key) T (k);
+          *self->key = k;
+          return (self);
         }
       catch (...)
         {
-          sl_node_base::dealloc (self, sizeof (*self));
+          sl_dealloc_node (self);
           throw;
         }
-
-      return (self);
     }
 
-  template <class Args...>
+  template <class ...Args>
   static sl_node<T>* move (unsigned int lvl, Args... args)
     {
-      auto self = (sl_node<T> *)sl_node_base::alloc (lvl, sizeof (*self));
-      new (&self->key) T (std::forward<Args&&>(args)...);
+      uintptr_t *np;
+      auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
+
+      self->init (lvl, np);
+      new (&*self->key) T (std::forward<Args&&>(args)...);
       return (self);
     }
 
   void safe_destroy ()
     {
-      this->key.~T ();
-      sl_node_base::dealloc (this);
+      sl_dealloc_node (this);
     }
 };
 
 static const uintptr_t SL_XBIT = 1;
 static const unsigned int SL_MAX_DEPTH = 32;
 
-inline uintptr_t&
-node_at (uintptr_t obj, size_t idx)
-{
-  auto np = (sl_node_base *)(obj & ~SL_XBIT);
-  return (np->next[idx]);
-}
+static const int SL_UNLINK_NONE = 0;
+static const int SL_UNLINK_ASSIST = 1;
+static const int SL_UNLINK_FORCE = 2;
 
 } // namespace detail
 
-template <class T, class Cmp = std::less_than<T> >
+template <class T, class Cmp = std::less<T> >
 struct skip_list
 {
-  detail::sl_node_base *head;
+  detail::sl_node<T> *head;
   Cmp cmpfn;
   unsigned int max_depth;
   std::atomic<size_t> hi_water {0};
   std::atomic<size_t> nelems {0};
+
+  typedef detail::sl_node<T> node_type;
 
   void _Init (Cmp c, unsigned int depth)
     {
@@ -88,8 +91,12 @@ struct skip_list
       if ((this->max_depth = depth) > detail::SL_MAX_DEPTH)
         this->max_depth = detail::SL_MAX_DEPTH;
 
-      this->head = detail::sl_node_base::alloc (this->max_depth,
-                                                sizeof (*this->head));
+      uintptr_t *np;
+      this->head = (node_type *)
+          detail::sl_alloc_node (this->max_depth,
+                                 sizeof (*this->head), &np);
+
+      this->head->init (this->max_depth, np);
     }
 
   skip_list (Cmp c = Cmp (), unsigned int depth = 24)
@@ -97,14 +104,49 @@ struct skip_list
       this->_Init (c, depth);
     }
 
-  detail::sl_node<T>* _Node (uintptr_t addr) const
+  node_type* _Node (uintptr_t addr) const
     {
-      return ((sl_node<T> *)(addr & ~detail::SL_XBIT));
+      return ((node_type *)(addr & ~detail::SL_XBIT));
+    }
+
+  uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl) const
+    {
+      return (this->_Node(addr)->next[lvl]);
+    }
+
+  unsigned int _Node_lvl (uintptr_t addr) const
+    {
+      return (this->_Node(addr)->nlvl);
+    }
+
+  unsigned int _Rand_lvl ()
+    {
+      size_t lvl = ctz (xrand ()) * 2 / 3;
+
+      if (lvl == 0)
+        return (1);
+      else
+        while (true)
+          {
+            auto prev = this->_Hiwater ();
+            if (lvl <= prev || prev == detail::SL_MAX_DEPTH)
+              break;
+            else if (this->hi_water.compare_exchange_weak (prev, prev + 1,
+                std::memory_order_acq_rel, std::memory_order_relaxed))
+              {
+                lvl = prev;
+                break;
+              }
+
+            xatomic_spin_nop ();
+          }
+
+      return (lvl);
     }
 
   const T& _Getk (uintptr_t addr) const
     {
-      return (this->_Node(addr)->key);
+      return (*this->_Node(addr)->key);
     }
 
   size_t _Hiwater () const
@@ -121,7 +163,7 @@ struct skip_list
     retry:
       for (int lvl = (int)this->_Hiwater (); lvl >= 0; --lvl)
         {
-          uintptr_t next = detail::node_at (pr, lvl);
+          uintptr_t next = this->_Node_at (pr, lvl);
           if (next == 0 && lvl >= n)
             continue;
           else if (next & detail::SL_XBIT)
@@ -129,7 +171,7 @@ struct skip_list
 
           for (it = next; it != 0; )
             {
-              next = detail::node_at (it, lvl);
+              next = this->_Node_at (it, lvl);
               while (next & detail::SL_XBIT)
                 {
                   if (unlink == detail::SL_UNLINK_NONE)
@@ -137,11 +179,11 @@ struct skip_list
                       if ((it = next & ~detail::SL_XBIT) == 0)
                         break;
 
-                      next = detail::node_at (it, lvl);
+                      next = this->_Node_at (it, lvl);
                     }
                   else
                     {
-                      uintptr_t qx = xatomic_cas (&detail::node_at (pr, lvl),
+                      uintptr_t qx = xatomic_cas (&this->_Node_at (pr, lvl),
                                                   it, next & ~detail::SL_XBIT);
                       if (qx == it)
                         it = next & ~detail::SL_XBIT;
@@ -153,7 +195,7 @@ struct skip_list
                           it = qx;
                         }
 
-                      next = it ? detail::node_at (it, lvl) : 0;
+                      next = it ? this->_Node_at (it, lvl) : 0;
                     }
                 }
 
@@ -165,9 +207,9 @@ struct skip_list
               pr = it, it = next;
             }
 
-          if (preds && lvl < n)
+          if (preds)
             preds[lvl] = pr;
-          if (succs && lvl < n)
+          if (succs)
             succs[lvl] = it;
         }
 
@@ -188,19 +230,19 @@ struct skip_list
 
     retry:
       uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
-      int n = this->_Rand_lvl ();
+      size_t n = this->_Rand_lvl ();
       if (this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST,
           preds, succs) != 0)
         return (false);
 
-      uintptr_t nv = this->_Alloc_node (n);
-      uintptr_t next = detail::node_at(nv, 0) = *succs;
+      uintptr_t nv = (uintptr_t)node_type::copy (n, key);
+      uintptr_t next = this->_Node_at(nv, 0) = *succs;
 
       for (int lvl = 1; lvl < n; ++lvl)
-        detail::node_at(nv, lvl) = succs[lvl];
+        this->_Node_at(nv, lvl) = succs[lvl];
 
       uintptr_t pred = *preds;
-      if (!xatomic_cas_bool (&detail::node_at(pred, 0), next, nv))
+      if (!xatomic_cas_bool (&this->_Node_at(pred, 0), next, nv))
         {
           this->_Node(nv)->safe_destroy ();
           goto retry;
@@ -210,15 +252,15 @@ struct skip_list
         while (true)
           {
             pred = preds[lvl];
-            if (xatomic_cas_bool (&detail::node_at(pred, lvl),
+            if (xatomic_cas_bool (&this->_Node_at(pred, lvl),
                                   succs[lvl], nv))
               break;   // Successful link.
 
             this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST, preds, succs);
             for (int ix = lvl; ix < n; ++ix)
-              if ((pred = detail::node_at (nv, ix)) == succs[ix])
+              if ((pred = this->_Node_at (nv, ix)) == succs[ix])
                 continue;
-              else if (xatomic_cas (&detail::node_at (nv, ix), pred,
+              else if (xatomic_cas (&this->_Node_at (nv, ix), pred,
                                     succs[ix]) & detail::SL_XBIT)
                 { // Another thread is removing this very key - Bail out.
                   this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
@@ -226,7 +268,7 @@ struct skip_list
                 }
           }
 
-      if (detail::node_at (nv, n - 1) & detail::SL_XBIT)
+      if (this->_Node_at (nv, n - 1) & detail::SL_XBIT)
         { // Another thread is removing this key - Make sure it's unlinked.
           this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
           return (false);
@@ -247,13 +289,13 @@ struct skip_list
 
       uintptr_t qx = 0, next = 0;
 
-      for (int lvl = detail::node_nlvl (it) - 1; lvl >= 0; --lvl)
+      for (int lvl = this->_Node_lvl (it) - 1; lvl >= 0; --lvl)
         {
-          qx = detail::node_at (it, lvl);
+          qx = this->_Node_at (it, lvl);
           do
             {
               next = qx;
-              qx = xatomic_or (&detail::node_at (it, lvl), detail::SL_XBIT);
+              qx = xatomic_or (&this->_Node_at (it, lvl), detail::SL_XBIT);
               if (qx & detail::SL_XBIT)
                 {
                   if (lvl == 0)
@@ -285,6 +327,6 @@ struct skip_list
     }
 };
 
-}
+} // namespace xrcu
 
 #endif

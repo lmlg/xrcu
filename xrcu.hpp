@@ -46,6 +46,39 @@ struct cs_guard
     }
 };
 
+// Miscellaneous functions that don't belong anywhere else.
+
+// Count the number of trailing zeroes.
+
+#ifdef __GNUC__
+
+inline unsigned int
+ctz (unsigned int val)
+{
+  return (__builtin_ctz (val));
 }
+
+#else
+
+unsigned int ctz (unsigned int val)
+{
+  unsigned int ret = 0;
+
+  val &= ~val + 1;   // Isolate the LSB.
+  ret += !!(val & 0xaaaaaaaau) << 0;
+  ret += !!(val & 0xccccccccu) << 1;
+  ret += !!(val & 0xf0f0f0f0u) << 2;
+  ret += !!(val & 0xff00ff00u) << 3;
+  ret += !!(val & 0xffff0000u) << 4;
+
+  return (ret);
+}
+
+#endif
+
+// Generate a pseudo-random number (thread-safe).
+unsigned int xrand ();
+
+} // namespace xrcu
 
 #endif

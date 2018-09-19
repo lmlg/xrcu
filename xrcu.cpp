@@ -4,7 +4,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <iostream>
+#include <ctime>
+#include <functional>
 
 namespace xrcu
 {
@@ -109,6 +110,7 @@ struct tl_data : public td_link
   bool must_flush;
   unsigned int n_fins;
   std::atomic_uintptr_t counter;
+  size_t xrand_val;
   finalizable *fin_objs;
 
   uintptr_t get_ctr () const
@@ -297,6 +299,17 @@ bool sync ()
 void finalize (finalizable *finp)
 {
   local_data()->finalize (finp);
+}
+
+unsigned int xrand ()
+{
+  auto self = &tldata;   // Avoid local_data ()
+  if (!self->xrand_val)
+    self->xrand_val = (unsigned int)(time (nullptr) ^
+      std::hash<std::thread::id>() (std::this_thread::get_id ()));
+
+  self->xrand_val = self->xrand_val * 1103515245 + 12345;
+  return (self->xrand_val >> 16);
 }
 
 } // namespace rcu

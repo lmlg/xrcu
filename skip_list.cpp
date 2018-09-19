@@ -7,13 +7,14 @@ namespace xrcu
 namespace detail
 {
 
-sl_node_base* sl_node_base::alloc (unsigned int lvl, size_t size)
+void* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp)
 {
   void *p = ::operator new (size + lvl * sizeof (uintptr_t));
-  return (new (p) sl_node_base (lvl, (uintptr_t)((char *)p + size)));
+  *outpp = (uintptr_t *)((char *)p + size);
+  return (p);
 }
 
-void sl_node_base::dealloc (void *ptr)
+void sl_dealloc_node (void *ptr)
 {
   ::operator delete (ptr);
 }
