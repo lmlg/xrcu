@@ -21,13 +21,11 @@ template <class T>
 struct sl_node : public finalizable
 {
   unsigned int nlvl;
-  optional<T> key;
   uintptr_t *next;
+  optional<T> key;
 
-  void init (unsigned int lvl, uintptr_t *np)
+  sl_node (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np)
     {
-      this->nlvl = lvl;
-      this->next = np;
     }
 
   static sl_node<T>* copy (unsigned int lvl, const T& k)
@@ -35,7 +33,8 @@ struct sl_node : public finalizable
       uintptr_t *np;
       auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
 
-      self->init (lvl, np);
+      new (self) sl_node<T> (lvl, np);
+
       try
         {
           *self->key = k;
@@ -54,13 +53,14 @@ struct sl_node : public finalizable
       uintptr_t *np;
       auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
 
-      self->init (lvl, np);
+      new (self->key) sl_node<T> (lvl, np);
       new (&*self->key) optional<T> (std::forward<Args&&>(args)...);
       return (self);
     }
 
   void safe_destroy ()
     {
+      this->key.reset ();
       sl_dealloc_node (this);
     }
 };
@@ -96,7 +96,7 @@ struct skip_list
           detail::sl_alloc_node (this->max_depth,
                                  sizeof (*this->head), &np);
 
-      this->head->init (this->max_depth, np);
+      new (this->head) node_type (this->max_depth, np);
     }
 
   skip_list (Cmp c = Cmp (), unsigned int depth = 24)
@@ -287,15 +287,16 @@ struct skip_list
       if (it == 0)
         return (it);
 
+      node_type *nodep = this->_Node (it);
       uintptr_t qx = 0, next = 0;
 
-      for (int lvl = this->_Node_lvl (it) - 1; lvl >= 0; --lvl)
+      for (int lvl = nodep->nlvl - 1; lvl >= 0; --lvl)
         {
-          qx = this->_Node_at (it, lvl);
+          qx = nodep->next[lvl];
           do
             {
               next = qx;
-              qx = xatomic_or (&this->_Node_at (it, lvl), detail::SL_XBIT);
+              qx = xatomic_or (&nodep->next[lvl], detail::SL_XBIT);
               if (qx & detail::SL_XBIT)
                 {
                   if (lvl == 0)
@@ -310,6 +311,7 @@ struct skip_list
       // Unlink the item.
       this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
       this->nelems.fetch_sub (1, std::memory_order_acq_rel);
+      finalize (nodep);
       return (it);
     }
 
