@@ -80,8 +80,8 @@ struct skip_list
   detail::sl_node<T> *head;
   Cmp cmpfn;
   unsigned int max_depth;
-  std::atomic<size_t> hi_water {0};
-  std::atomic<size_t> nelems {0};
+  std::atomic<size_t> hi_water { 1 };
+  std::atomic<size_t> nelems { 0 };
 
   typedef detail::sl_node<T> node_type;
 
@@ -161,7 +161,7 @@ struct skip_list
       uintptr_t pr = (uintptr_t)this->head, it = 0;
 
     retry:
-      for (int lvl = (int)this->_Hiwater (); lvl >= 0; --lvl)
+      for (int lvl = (int)this->_Hiwater () - 1; lvl >= 0; --lvl)
         {
           uintptr_t next = this->_Node_at (pr, lvl);
           if (next == 0 && lvl >= n)
@@ -227,9 +227,12 @@ struct skip_list
   bool insert (const T& key)
     {
       cs_guard g;
+      uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
+
+      for (int i = 0; i < detail::SL_MAX_DEPTH; ++i)
+        preds[i] = succs[i] = 0;
 
     retry:
-      uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
       size_t n = this->_Rand_lvl ();
       if (this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST,
           preds, succs) != 0)
