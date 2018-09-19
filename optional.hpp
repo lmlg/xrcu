@@ -2,6 +2,7 @@
 #define __XRCU_OPTIONAL_HPP__   1
 
 #include <stdexcept>
+#include <utility>
 
 namespace xrcu
 {
@@ -18,6 +19,12 @@ struct optional
       this->valid = true;
     }
 
+  void _Init (T&& value)
+    {
+      new (&this->buf[0]) T (std::forward<T&&> (value));
+      this->valid = true;
+    }
+
   optional () = default;
 
   optional (const T& value)
@@ -29,6 +36,11 @@ struct optional
     {
       if (right.valid)
         this->_Init (*right);
+    }
+
+  optional (T&& value)
+    {
+      this->_Init (static_cast<T&&> (value));
     }
 
   T& operator* ()
@@ -79,6 +91,16 @@ struct optional
     }
 
   optional<T>& operator= (const T& value)
+    {
+      if (!this->valid)
+        this->_Init (value);
+      else
+        **this = value;
+
+      return (*this);
+    }
+
+  optional<T>& operator= (T&& value)
     {
       if (!this->valid)
         this->_Init (value);

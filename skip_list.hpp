@@ -55,7 +55,7 @@ struct sl_node : public finalizable
       auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
 
       self->init (lvl, np);
-      new (&*self->key) T (std::forward<Args&&>(args)...);
+      new (&*self->key) optional<T> (std::forward<Args&&>(args)...);
       return (self);
     }
 
