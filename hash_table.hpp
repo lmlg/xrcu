@@ -7,10 +7,8 @@
 #include "lwlock.hpp"
 #include <atomic>
 #include <functional>
-#include <cstdint>
 #include <type_traits>
 #include <initializer_list>
-#include <iostream>
 
 namespace std
 {
