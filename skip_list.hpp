@@ -8,6 +8,11 @@
 #include <functional>
 #include <cstdint>
 
+namespace std
+{
+  struct forward_iterator_tag;
+}
+
 namespace xrcu
 {
 
@@ -37,7 +42,7 @@ struct sl_node : public finalizable
 
       try
         {
-          *self->key = k;
+          self->key = k;
           return (self);
         }
       catch (...)
@@ -84,6 +89,7 @@ struct skip_list
   std::atomic<size_t> nelems { 0 };
 
   typedef detail::sl_node<T> node_type;
+  typedef skip_list<T, Cmp> _Self;
 
   void _Init (Cmp c, unsigned int depth)
     {
@@ -104,19 +110,19 @@ struct skip_list
       this->_Init (c, depth);
     }
 
-  node_type* _Node (uintptr_t addr) const
+  static node_type* _Node (uintptr_t addr)
     {
       return ((node_type *)(addr & ~detail::SL_XBIT));
     }
 
-  uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl) const
+  static uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl)
     {
-      return (this->_Node(addr)->next[lvl]);
+      return (_Self::_Node(addr)->next[lvl]);
     }
 
-  unsigned int _Node_lvl (uintptr_t addr) const
+  static unsigned int _Node_lvl (uintptr_t addr)
     {
-      return (this->_Node(addr)->nlvl);
+      return (_Self::_Node(addr)->nlvl);
     }
 
   unsigned int _Rand_lvl ()
@@ -144,9 +150,9 @@ struct skip_list
       return (lvl);
     }
 
-  const T& _Getk (uintptr_t addr) const
+  static const T& _Getk (uintptr_t addr)
     {
-      return (*this->_Node(addr)->key);
+      return (*_Self::_Node(addr)->key);
     }
 
   size_t _Hiwater () const
@@ -163,7 +169,7 @@ struct skip_list
     retry:
       for (int lvl = (int)this->_Hiwater () - 1; lvl >= 0; --lvl)
         {
-          uintptr_t next = this->_Node_at (pr, lvl);
+          uintptr_t next = _Self::_Node_at (pr, lvl);
           if (next == 0 && lvl >= n)
             continue;
           else if (next & detail::SL_XBIT)
@@ -179,11 +185,11 @@ struct skip_list
                       if ((it = next & ~detail::SL_XBIT) == 0)
                         break;
 
-                      next = this->_Node_at (it, lvl);
+                      next = _Self::_Node_at (it, lvl);
                     }
                   else
                     {
-                      uintptr_t qx = xatomic_cas (&this->_Node_at (pr, lvl),
+                      uintptr_t qx = xatomic_cas (&_Self::_Node_at (pr, lvl),
                                                   it, next & ~detail::SL_XBIT);
                       if (qx == it)
                         it = next & ~detail::SL_XBIT;
@@ -199,9 +205,9 @@ struct skip_list
                     }
                 }
 
-              if (it == 0 || this->cmpfn (key, this->_Getk (it)) ||
+              if (it == 0 || this->cmpfn (key, _Self::_Getk (it)) ||
                   (unlink != detail::SL_UNLINK_FORCE &&
-                    (got = !this->cmpfn (this->_Getk (it), key))))
+                    (got = !this->cmpfn (_Self::_Getk (it), key))))
                   break;
 
               pr = it, it = next;
@@ -239,15 +245,15 @@ struct skip_list
         return (false);
 
       uintptr_t nv = (uintptr_t)node_type::copy (n, key);
-      uintptr_t next = this->_Node_at(nv, 0) = *succs;
+      uintptr_t next = _Self::_Node_at(nv, 0) = *succs;
 
       for (int lvl = 1; lvl < n; ++lvl)
         this->_Node_at(nv, lvl) = succs[lvl];
 
       uintptr_t pred = *preds;
-      if (!xatomic_cas_bool (&this->_Node_at(pred, 0), next, nv))
+      if (!xatomic_cas_bool (&_Self::_Node_at(pred, 0), next, nv))
         {
-          this->_Node(nv)->safe_destroy ();
+          _Self::_Node(nv)->safe_destroy ();
           goto retry;
         }
 
@@ -255,7 +261,7 @@ struct skip_list
         while (true)
           {
             pred = preds[lvl];
-            if (xatomic_cas_bool (&this->_Node_at(pred, lvl),
+            if (xatomic_cas_bool (&_Self::_Node_at(pred, lvl),
                                   succs[lvl], nv))
               break;   // Successful link.
 
@@ -263,7 +269,7 @@ struct skip_list
             for (int ix = lvl; ix < n; ++ix)
               if ((pred = this->_Node_at (nv, ix)) == succs[ix])
                 continue;
-              else if (xatomic_cas (&this->_Node_at (nv, ix), pred,
+              else if (xatomic_cas (&_Self::_Node_at (nv, ix), pred,
                                     succs[ix]) & detail::SL_XBIT)
                 { // Another thread is removing this very key - Bail out.
                   this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
@@ -271,7 +277,7 @@ struct skip_list
                 }
           }
 
-      if (this->_Node_at (nv, n - 1) & detail::SL_XBIT)
+      if (_Self::_Node_at (nv, n - 1) & detail::SL_XBIT)
         { // Another thread is removing this key - Make sure it's unlinked.
           this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
           return (false);
@@ -290,7 +296,7 @@ struct skip_list
       if (it == 0)
         return (it);
 
-      node_type *nodep = this->_Node (it);
+      node_type *nodep = _Self::_Node (it);
       uintptr_t qx = 0, next = 0;
 
       for (int lvl = nodep->nlvl - 1; lvl >= 0; --lvl)
@@ -328,7 +334,95 @@ struct skip_list
     {
       cs_guard g;
       uintptr_t it = this->_Erase (key);
-      return (it ? optional<T> (this->_Getk (it)) : optional<T> ());
+      return (it ? optional<T> (_Self::_Getk (it)) : optional<T> ());
+    }
+
+  struct iterator : public cs_guard
+    {
+      uintptr_t node;
+
+      iterator (uintptr_t addr) : node (addr) {}
+
+      iterator& operator++ ()
+        {
+          while (true)
+            {
+              if (this->node == 0)
+                break;
+
+              this->node = skip_list<T, Cmp>::_Node_at (this->node, 0);
+              if ((this->node & detail::SL_XBIT) == 0)
+                break;
+            }
+
+          return (*this);
+        }
+
+      iterator operator++ (int)
+        {
+          iterator tmp { this->node };
+          ++*this;
+          return (tmp);
+        }
+
+      const T& operator* () const
+        {
+          return (skip_list<T, Cmp>::_Getk (this->node));
+        }
+
+      bool operator== (const iterator& right) const
+        {
+          return (this->node == right.node);
+        }
+
+      bool operator!= (const iterator& right) const
+        {
+          return (this->node != right.node);
+        }
+    };
+
+  typedef iterator const_iterator;
+
+  const_iterator cbegin () const
+    {
+      return (iterator (_Self::_Node_at ((uintptr_t)this->head, 0)));
+    }
+
+  iterator begin ()
+    {
+      return (this->cbegin ());
+    }
+
+  const_iterator begin () const
+    {
+      return (this->cbegin ());
+    }
+
+  const_iterator cend () const
+    {
+      return (iterator (0));
+    }
+
+  iterator end ()
+    {
+      return (this->cend ());
+    }
+
+  const_iterator end () const
+    {
+      return (this->cend ());
+    }
+
+  ~skip_list ()
+    {
+      uintptr_t run = (uintptr_t)this->head;
+
+      while (run != 0)
+        {
+          uintptr_t next = _Self::_Node_at (run, 0);
+          _Self::_Node(run)->safe_destroy ();
+          run = next;
+        }
     }
 };
 
