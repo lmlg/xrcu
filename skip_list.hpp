@@ -6,7 +6,7 @@
 #include "optional.hpp"
 #include <atomic>
 #include <functional>
-#include <cstdint>
+#include <initializer_list>
 
 namespace std
 {
@@ -108,6 +108,21 @@ struct skip_list
   skip_list (Cmp c = Cmp (), unsigned int depth = 24)
     {
       this->_Init (c, depth);
+    }
+
+  template <class Iter>
+  skip_list (Iter first, Iter last,
+      Cmp c = Cmp (), unsigned int depth = 24)
+    {
+      this->_Init (c, depth);
+      for (; first != last; ++first)
+        this->insert (*first);
+    }
+
+  skip_list (std::initializer_list<T> lst,
+      Cmp c = Cmp (), unsigned int depth = 24) :
+        skip_list (lst.begin (), lst.end (), c, depth)
+    {
     }
 
   static node_type* _Node (uintptr_t addr)
@@ -411,6 +426,16 @@ struct skip_list
   const_iterator end () const
     {
       return (this->cend ());
+    }
+
+  size_t size () const
+    {
+      return (this->nelems.load (std::memory_order_relaxed));
+    }
+
+  bool empty () const
+    {
+      return (this->size () == 0);
     }
 
   ~skip_list ()
