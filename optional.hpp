@@ -102,11 +102,8 @@ struct optional
 
   optional<T>& operator= (T&& value)
     {
-      if (!this->valid)
-        this->_Init (value);
-      else
-        **this = value;
-
+      this->reset ();
+      this->_Init (std::forward<T&&> (value));
       return (*this);
     }
 };
