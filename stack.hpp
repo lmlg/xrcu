@@ -75,7 +75,8 @@ struct stack_iter_base : public cs_guard
   stack_iter_base operator++ (int)
     {
       stack_iter_base tmp (this->runp);
-      return (++tmp);
+      ++*this;
+      return (tmp);
     }
 
   bool operator== (const stack_iter_base& right) const
