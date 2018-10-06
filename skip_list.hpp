@@ -58,8 +58,8 @@ struct sl_node : public finalizable
       uintptr_t *np;
       auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
 
-      new (self->key) sl_node<T> (lvl, np);
-      new (&*self->key) optional<T> (std::forward<Args&&>(args)...);
+      new (self) sl_node<T> (lvl, np);
+      new (&self->key) optional<T> (std::forward<Args&&>(args)...);
       return (self);
     }
 
@@ -146,21 +146,20 @@ struct skip_list
 
       if (lvl == 0)
         return (1);
-      else
-        while (true)
-          {
-            auto prev = this->_Hiwater ();
-            if (lvl <= prev || prev == detail::SL_MAX_DEPTH)
+      while (true)
+        {
+          auto prev = this->_Hiwater ();
+          if (lvl <= prev || prev == detail::SL_MAX_DEPTH)
+            break;
+          else if (this->hi_water.compare_exchange_weak (prev, prev + 1,
+              std::memory_order_acq_rel, std::memory_order_relaxed))
+            {
+              lvl = prev;
               break;
-            else if (this->hi_water.compare_exchange_weak (prev, prev + 1,
-                std::memory_order_acq_rel, std::memory_order_relaxed))
-              {
-                lvl = prev;
-                break;
-              }
+            }
 
-            xatomic_spin_nop ();
-          }
+          xatomic_spin_nop ();
+        }
 
       return (lvl);
     }
