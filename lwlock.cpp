@@ -75,7 +75,7 @@ lwlock_acquire (uintptr_t *ptr)
         return;
 
       for (int i = 0; i < MAX_SPINS && *ptr != 0; ++i)
-        xrcu::xatomic_spin_nop ();
+          ;
 
       if (++retries == MAX_RETRIES)
         {

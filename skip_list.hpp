@@ -149,19 +149,13 @@ struct skip_list
       while (true)
         {
           auto prev = this->_Hiwater ();
-          if (lvl <= prev || prev == detail::SL_MAX_DEPTH)
-            break;
-          else if (this->hi_water.compare_exchange_weak (prev, prev + 1,
-              std::memory_order_acq_rel, std::memory_order_relaxed))
-            {
-              lvl = prev;
-              break;
-            }
-
-          xatomic_spin_nop ();
+          if (lvl <= prev)
+            return (lvl);
+          else if (prev == detail::SL_MAX_DEPTH ||
+              this->hi_water.compare_exchange_weak (prev, prev + 1,
+                std::memory_order_acq_rel, std::memory_order_relaxed))
+            return (prev);
         }
-
-      return (lvl);
     }
 
   static const T& _Getk (uintptr_t addr)
