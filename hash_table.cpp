@@ -37,17 +37,14 @@ static const size_t PRIMES[] =
 
 size_t find_hsize (size_t size, float mvr, size_t& pidx)
 {
-  intptr_t i1 = 0, i2 = sizeof (PRIMES) / sizeof (PRIMES[0]), cnt = i2 - i1;
-  while (cnt > 0)
+  intptr_t i1 = 0, i2 = sizeof (PRIMES) / sizeof (PRIMES[0]);
+  while (i1 < i2)
     {
-      intptr_t step = cnt >> 1;
+      intptr_t step = (i1 + i2) >> 1;
       if (PRIMES[step] < size)
-        {
-          i1 = step;
-          cnt -= step + 1;
-        }
+        i1 = step + 1;
       else
-        cnt = step;
+        i2 = step;
     }
 
   pidx = i1;
