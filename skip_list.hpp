@@ -71,7 +71,7 @@ struct sl_node : public finalizable
 };
 
 static const uintptr_t SL_XBIT = 1;
-static const unsigned int SL_MAX_DEPTH = 32;
+static const unsigned int SL_MAX_DEPTH = 24;
 
 static const int SL_UNLINK_NONE = 0;
 static const int SL_UNLINK_ASSIST = 1;
@@ -82,14 +82,44 @@ static const int SL_UNLINK_FORCE = 2;
 template <class T, class Cmp = std::less<T> >
 struct skip_list
 {
-  detail::sl_node<T> *head;
+  std::atomic<detail::sl_node<T> *> head;
   Cmp cmpfn;
   unsigned int max_depth;
   std::atomic<size_t> hi_water { 1 };
-  std::atomic<size_t> nelems { 0 };
 
   typedef detail::sl_node<T> node_type;
   typedef skip_list<T, Cmp> _Self;
+
+  node_type* _Make_root ()
+    {
+      uintptr_t *np;
+      auto ret = (node_type *)
+        detail::sl_alloc_node (this->max_depth + 1,
+                               sizeof (node_type), &np);
+
+      *np = 1;
+      new (ret) node_type (this->max_depth, np + 1);
+      return (ret);
+    }
+
+  uintptr_t* _Root_plen (uintptr_t addr)
+    {
+      return (this->_Node(addr)->next - 1);
+    }
+
+  bool _Bump_len (uintptr_t *lenp, intptr_t off)
+    {
+      while (true)
+        {
+          auto prev = *lenp;
+          if (prev == 0)
+            return (false);
+          else if (xatomic_cas_bool (lenp, prev, prev + off))
+            return (true);
+
+          xatomic_spin_nop ();
+        }
+    }
 
   void _Init (Cmp c, unsigned int depth)
     {
@@ -97,22 +127,17 @@ struct skip_list
       if ((this->max_depth = depth) > detail::SL_MAX_DEPTH)
         this->max_depth = detail::SL_MAX_DEPTH;
 
-      uintptr_t *np;
-      this->head = (node_type *)
-          detail::sl_alloc_node (this->max_depth,
-                                 sizeof (*this->head), &np);
-
-      new (this->head) node_type (this->max_depth, np);
+      this->head.store (this->_Make_root (), std::memory_order_relaxed);
     }
 
-  skip_list (Cmp c = Cmp (), unsigned int depth = 24)
+  skip_list (Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH)
     {
       this->_Init (c, depth);
     }
 
   template <class Iter>
   skip_list (Iter first, Iter last,
-      Cmp c = Cmp (), unsigned int depth = 24)
+      Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH)
     {
       this->_Init (c, depth);
       for (; first != last; ++first)
@@ -120,7 +145,7 @@ struct skip_list
     }
 
   skip_list (std::initializer_list<T> lst,
-      Cmp c = Cmp (), unsigned int depth = 24) :
+      Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH) :
         skip_list (lst.begin (), lst.end (), c, depth)
     {
     }
@@ -169,10 +194,15 @@ struct skip_list
     }
 
   uintptr_t _Find_preds (int n, const T& key, int unlink,
-      uintptr_t *preds = nullptr, uintptr_t *succs = nullptr)
+      uintptr_t *preds = nullptr, uintptr_t *succs = nullptr,
+      uintptr_t *outp = nullptr)
     {
       bool got = false;
-      uintptr_t pr = (uintptr_t)this->head, it = 0;
+      uintptr_t pr = (uintptr_t)this->head.load (std::memory_order_relaxed);
+      uintptr_t it = 0;
+
+      if (outp)
+        *outp = pr;
 
     retry:
       for (int lvl = (int)this->_Hiwater () - 1; lvl >= 0; --lvl)
@@ -241,6 +271,7 @@ struct skip_list
   bool insert (const T& key)
     {
       cs_guard g;
+      uintptr_t xroot;
       uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
 
       for (int i = 0; i < detail::SL_MAX_DEPTH; ++i)
@@ -249,7 +280,7 @@ struct skip_list
     retry:
       size_t n = this->_Rand_lvl ();
       if (this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST,
-          preds, succs) != 0)
+          preds, succs, &xroot) != 0)
         return (false);
 
       uintptr_t nv = (uintptr_t)node_type::copy (n, key);
@@ -290,16 +321,21 @@ struct skip_list
           this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
           return (false);
         }
+      else if (!this->_Bump_len (this->_Root_plen (xroot), 1))
+        {
+          _Self::_Node(nv)->safe_destroy ();
+          goto retry;
+        }
 
-      this->nelems.fetch_add (1, std::memory_order_acq_rel);
       return (true);
     }
 
   uintptr_t _Erase (const T& key)
     {
-      uintptr_t preds[detail::SL_MAX_DEPTH];
+      uintptr_t xroot, preds[detail::SL_MAX_DEPTH];
       uintptr_t it = this->_Find_preds (this->_Hiwater (), key,
-                                        detail::SL_UNLINK_ASSIST, preds);
+                                        detail::SL_UNLINK_ASSIST,
+                                        preds, nullptr, &xroot);
 
       if (it == 0)
         return (it);
@@ -327,9 +363,9 @@ struct skip_list
 
       // Unlink the item.
       this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
-      this->nelems.fetch_sub (1, std::memory_order_acq_rel);
+      bool rv = this->_Bump_len (this->_Root_plen (xroot), -1);
       finalize (nodep);
-      return (it);
+      return (rv ? it : 0);
     }
 
   bool erase (const T& key)
@@ -393,7 +429,8 @@ struct skip_list
 
   const_iterator cbegin () const
     {
-      return (iterator (_Self::_Node_at ((uintptr_t)this->head, 0)));
+      auto tmp = (uintptr_t)this->head.load (std::memory_order_relaxed);
+      return (iterator (_Self::_Node_at (tmp, 0)));
     }
 
   iterator begin ()
@@ -423,7 +460,9 @@ struct skip_list
 
   size_t size () const
     {
-      return (this->nelems.load (std::memory_order_relaxed));
+      cs_guard g;
+      uintptr_t ret = *(this->head.load(std::memory_order_relaxed)->next - 1);
+      return (ret - (ret != 0));
     }
 
   bool empty () const
@@ -431,19 +470,109 @@ struct skip_list
       return (this->size () == 0);
     }
 
-  ~skip_list ()
+  void _Fini_root (node_type *xroot)
     {
-      uintptr_t run = (uintptr_t)this->head;
-
-      while (run != 0)
+      for (uintptr_t run = (uintptr_t)xroot; run != 0; )
         {
           uintptr_t next = _Self::_Node_at (run, 0);
           _Self::_Node(run)->safe_destroy ();
           run = next;
         }
     }
+
+  void _Lock_root ()
+    {
+      cs_guard g;
+      while (true)
+        {
+          auto ptr = this->_Root_plen ((uintptr_t)
+            this->head.load (std::memory_order_relaxed));
+          auto val = *ptr;
+
+          if (val != 0 && xatomic_cas_bool (ptr, val, 0))
+            break;
+
+          xatomic_spin_nop ();
+        }
+    }
+
+  template <class Iter>
+  void assign (Iter first, Iter last)
+    {
+      _Self tmp (first, last);
+      this->_Lock_root ();
+      auto old = this->head.load (std::memory_order_relaxed);
+      this->head.store (tmp.head.load (std::memory_order_relaxed),
+                        std::memory_order_release);
+      tmp.head.store (old, std::memory_order_relaxed);
+    }
+
+  void assign (std::initializer_list<T> lst)
+    {
+      this->assign (lst.begin (), lst.end ());
+    }
+
+  _Self& operator= (const _Self& right)
+    {
+      this->assign (right.begin (), right.end ());
+      return (*this);
+    }
+
+  _Self& operator= (_Self&& right)
+    {
+      this->_Lock_root ();
+      auto old = this->head.load (std::memory_order_relaxed);
+      this->head.store (right.head.load (std::memory_order_relaxed),
+                        std::memory_order_release);
+      this->_Fini_root (old);
+    }
+
+  void swap (_Self& right)
+    {
+      this->_Lock_root ();
+      right._Lock_root ();
+
+      auto lw = this->hi_water.load (std::memory_order_relaxed);
+      auto rw = right.hi_water.load (std::memory_order_relaxed);
+
+      this->hi_water.store (rw, std::memory_order_relaxed);
+      right.hi_water.store (lw, std::memory_order_relaxed);
+
+      auto lh = this->head.load (std::memory_order_relaxed);
+      auto rh = right.head.load (std::memory_order_relaxed);
+
+      this->head.store (rh, std::memory_order_relaxed);
+      right.head.store (lh, std::memory_order_relaxed);
+
+      std::atomic_thread_fence (std::memory_order_release);
+    }
+
+  void clear ()
+    {
+      auto xroot = this->_Make_root ();
+      this->_Lock_root ();
+      auto prev = this->head.exchange (xroot, std::memory_order_release);
+      this->_Fini_root (prev);
+    }
+
+  ~skip_list ()
+    {
+      this->_Fini_root (this->head.load (std::memory_order_relaxed));
+    }
 };
 
 } // namespace xrcu
+
+namespace std
+{
+
+template <class T, class Cmp>
+void swap (xrcu::skip_list<T, Cmp>& left,
+           xrcu::skip_list<T, Cmp>& right)
+{
+  left.swap (right);
+}
+
+} // namespace std
 
 #endif

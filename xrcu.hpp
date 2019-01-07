@@ -77,7 +77,7 @@ unsigned int ctz (unsigned int val)
 #endif
 
 // Generate a pseudo-random number (thread-safe).
-unsigned int xrand ();
+extern unsigned int xrand ();
 
 } // namespace xrcu
 
