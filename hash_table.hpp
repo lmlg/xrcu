@@ -90,6 +90,7 @@ struct alignas (uintptr_t) ht_vector : public finalizable
   uintptr_t *data;
   size_t entries;
   size_t pidx;
+  std::atomic<size_t> nelems { 0 };
 
   ht_vector (uintptr_t *ep) : data (ep) {}
 
@@ -222,7 +223,6 @@ struct hash_table
   float loadf = 0.85f;
   std::atomic<intptr_t> grow_limit;
   lwlock lock;
-  std::atomic<size_t> nelems;
 
   void _Set_loadf (float ldf)
     {
@@ -254,7 +254,7 @@ struct hash_table
       this->eqfn = e;
       this->hashfn = h;
       this->grow_limit.store (gt, std::memory_order_relaxed);
-      this->nelems.store (0, std::memory_order_relaxed);
+      this->vec->nelems.store (0, std::memory_order_relaxed);
     }
 
   hash_table (size_t size = 0, float ldf = 0.85f,
@@ -290,15 +290,14 @@ struct hash_table
       this->eqfn = right.eqfn;
       this->hashfn = right.hashfn;
       this->loadf = right.loadf;
-      this->nelems.store (right.nelems.load (std::memory_order_relaxed),
-                          std::memory_order_relaxed);
       this->grow_limit.store ((intptr_t)(this->loadf * this->size ()),
                               std::memory_order_relaxed);
     }
 
   size_t size () const
     {
-      return (this->nelems.load (std::memory_order_relaxed));
+      cs_guard g;
+      return (this->vec->nelems.load (std::memory_order_relaxed));
     }
 
   bool empty () const
@@ -397,7 +396,7 @@ struct hash_table
 
           s.vector = nullptr;
 
-          this->nelems.store (nelem, std::memory_order_relaxed);
+          np->nelems.store (nelem, std::memory_order_relaxed);
           this->grow_limit.store ((intptr_t)(this->loadf *
               np->entries) - nelem, std::memory_order_relaxed);
           std::atomic_thread_fence (std::memory_order_release);
@@ -489,7 +488,7 @@ struct hash_table
                   xatomic_cas_bool (ep + idx + 1, val_traits::FREE, v))
 #endif
                 {
-                  this->nelems.fetch_add (1, std::memory_order_acq_rel);
+                  this->vec->nelems.fetch_add (1, std::memory_order_acq_rel);
                   return (found);
                 }
 
@@ -588,7 +587,7 @@ struct hash_table
                                           oldv, val_traits::DELT))
                 continue;
 
-              this->nelems.fetch_sub (1, std::memory_order_acq_rel);
+              this->vec->nelems.fetch_sub (1, std::memory_order_acq_rel);
               // Safe to set the key without atomic ops.
               ep[idx] = key_traits::DELT;
               key_traits().destroy (oldk);
@@ -677,7 +676,7 @@ struct hash_table
       return (this->end ());
     }
 
-  void _Assign_vector (detail::ht_vector *nv, size_t nelems, intptr_t gt)
+  void _Assign_vector (detail::ht_vector *nv, intptr_t gt)
     {
       // First step: Lock the table.
       this->lock.acquire ();
@@ -695,7 +694,6 @@ struct hash_table
         }
 
       // Third step: Set up the new vector and parameters.
-      this->nelems.store (nelems, std::memory_order_relaxed);
       this->grow_limit.store (gt, std::memory_order_relaxed);
       std::atomic_thread_fence (std::memory_order_release);
 
@@ -708,14 +706,14 @@ struct hash_table
     {
       size_t pidx, gt = detail::find_hsize (0, this->loadf, pidx);
       auto nv = detail::make_htvec (pidx, key_traits::FREE, val_traits::FREE);
-      this->_Assign_vector (nv, 0, gt);
+      this->_Assign_vector (nv, gt);
     }
 
   template <class Iter>
   void assign (Iter first, Iter last)
     {
       self_type tmp (first, last, 0, this->loadf);
-      this->_Assign_vector (tmp.vec, tmp.size (),
+      this->_Assign_vector (tmp.vec,
         tmp.grow_limit.load (std::memory_order_relaxed));
       tmp.vec = nullptr;
     }
@@ -733,23 +731,10 @@ struct hash_table
 
   self_type& operator= (self_type&& right)
     {
-      this->_Assign_vector (right.vec, right.size (),
+      this->_Assign_vector (right.vec,
         right.grow_limit.load (std::memory_order_relaxed));
       this->loadf = right.loadf;
       return (*this);
-    }
-
-  size_t _Count_nelems ()
-    {
-      size_t ret = 0;
-      for (size_t i = detail::table_idx (0) + 1; i < this->vec->size (); ++i)
-        {
-          auto prev = xatomic_or (&this->vec->data[i], val_traits::XBIT);
-          if (prev != val_traits::FREE && prev != val_traits::DELT)
-            ++ret;
-        }
-
-      return (ret);
     }
 
   void swap (self_type& right)
@@ -757,13 +742,14 @@ struct hash_table
       detail::ht_sentry s1 (&this->lock, ~val_traits::XBIT);
       detail::ht_sentry s2 (&right.lock, ~val_traits::XBIT);
 
+      // Prevent further insertions (still allows deletions).
+      this->grow_limit.store (0, std::memory_order_release);
+      right.grow_limit.store (0, std::memory_order_release);
+
       std::swap (this->vec, right.vec);
       std::swap (this->eqfn, right.eqfn);
       std::swap (this->hashfn, right.hashfn);
       std::swap (this->loadf, right.loadf);
-
-      this->nelems.store (this->_Count_nelems (), std::memory_order_release);
-      right.nelems.store (right._Count_nelems (), std::memory_order_release);
 
       this->grow_limit.store ((intptr_t)(this->loadf *
         this->vec->entries) - this->size (), std::memory_order_release);
