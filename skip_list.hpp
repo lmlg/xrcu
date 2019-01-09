@@ -97,7 +97,6 @@ struct skip_list
         detail::sl_alloc_node (this->max_depth + 1,
                                sizeof (node_type), &np);
 
-      *np = 1;
       new (ret) node_type (this->max_depth, np + 1);
       return (ret);
     }
@@ -109,10 +108,10 @@ struct skip_list
 
   bool _Bump_len (uintptr_t *lenp, intptr_t off)
     {
-      while (true)
+      for (off += off ; ; )
         {
           auto prev = *lenp;
-          if (prev == 0)
+          if (prev & 1)
             return (false);
           else if (xatomic_cas_bool (lenp, prev, prev + off))
             return (true);
@@ -195,7 +194,7 @@ struct skip_list
 
   uintptr_t _Find_preds (int n, const T& key, int unlink,
       uintptr_t *preds = nullptr, uintptr_t *succs = nullptr,
-      uintptr_t *outp = nullptr)
+      uintptr_t *outp = nullptr) const
     {
       bool got = false;
       uintptr_t pr = (uintptr_t)this->head.load (std::memory_order_relaxed);
@@ -462,7 +461,7 @@ struct skip_list
     {
       cs_guard g;
       uintptr_t ret = *(this->head.load(std::memory_order_relaxed)->next - 1);
-      return (ret - (ret != 0));
+      return (ret >> 1);
     }
 
   bool empty () const
@@ -470,12 +469,18 @@ struct skip_list
       return (this->size () == 0);
     }
 
+  template <bool Destroy = false>
   void _Fini_root (node_type *xroot)
     {
       for (uintptr_t run = (uintptr_t)xroot; run != 0; )
         {
           uintptr_t next = _Self::_Node_at (run, 0);
-          _Self::_Node(run)->safe_destroy ();
+
+          if (Destroy)
+            _Self::_Node(run)->safe_destroy ();
+          else
+            finalize (_Self::_Node (run));
+
           run = next;
         }
     }
@@ -489,7 +494,7 @@ struct skip_list
             this->head.load (std::memory_order_relaxed));
           auto val = *ptr;
 
-          if (val != 0 && xatomic_cas_bool (ptr, val, 0))
+          if ((val & 1) == 0 && xatomic_cas_bool (ptr, val, val | 1))
             break;
 
           xatomic_spin_nop ();
@@ -524,7 +529,7 @@ struct skip_list
       auto old = this->head.load (std::memory_order_relaxed);
       this->head.store (right.head.load (std::memory_order_relaxed),
                         std::memory_order_release);
-      this->_Fini_root (old);
+      this->_Fini_root<> (old);
     }
 
   void swap (_Self& right)
@@ -544,6 +549,9 @@ struct skip_list
       this->head.store (rh, std::memory_order_relaxed);
       right.head.store (lh, std::memory_order_relaxed);
 
+      *this->_Root_plen((uintptr_t)rh) &= ~(uintptr_t)1;
+      *right._Root_plen((uintptr_t)lh) &= ~(uintptr_t)1;
+
       std::atomic_thread_fence (std::memory_order_release);
     }
 
@@ -552,12 +560,12 @@ struct skip_list
       auto xroot = this->_Make_root ();
       this->_Lock_root ();
       auto prev = this->head.exchange (xroot, std::memory_order_release);
-      this->_Fini_root (prev);
+      this->_Fini_root<> (prev);
     }
 
   ~skip_list ()
     {
-      this->_Fini_root (this->head.load (std::memory_order_relaxed));
+      this->_Fini_root<true> (this->head.load (std::memory_order_relaxed));
     }
 };
 
