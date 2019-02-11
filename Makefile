@@ -3,9 +3,9 @@ SHARED_LIBS = libxrcu.so
 
 -include config.mak
 
-OBJS = xrcu.o hash_table.o stack.o
+OBJS = xrcu.o hash_table.o stack.o lwlock.o
 ALL_LIBS = $(STATIC_LIBS) $(SHARED_LIBS)
-HEADERS = xrcu.hpp stack.hpp hash_table.hpp
+HEADERS = xrcu.hpp stack.hpp hash_table.hpp xatomic.hpp lwlock.hpp optional.hpp
 
 AR = $(CROSS_COMPILE)ar
 RANLIB = $(CROSS_COMPILE)ranlib
