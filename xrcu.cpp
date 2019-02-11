@@ -301,6 +301,11 @@ void finalize (finalizable *finp)
   local_data()->finalize (finp);
 }
 
+void flush_finalizers ()
+{
+  local_data()->flush_all ();
+}
+
 unsigned int xrand ()
 {
   auto self = &tldata;   // Avoid local_data ()
