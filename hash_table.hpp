@@ -64,9 +64,9 @@ struct ht_traits<false, T>
       return ((uintptr_t)(new ht_wrapper<T> (val)));
     }
 
-  const T& get (uintptr_t addr) const
+  T& get (uintptr_t addr) const
     {
-      return (((const ht_wrapper<T> *)(addr & ~XBIT))->value);
+      return (((ht_wrapper<T> *)(addr & ~XBIT))->value);
     }
 
   void destroy (uintptr_t addr) const
@@ -191,8 +191,7 @@ struct ht_inserter
       return (this->value);
     }
 
-  template <class T>
-  uintptr_t call1 (const T&) const noexcept
+  uintptr_t call1 (uintptr_t) const noexcept
     {
       return (this->value);
     }
@@ -465,12 +464,13 @@ struct hash_table
               if (tmp != val_traits::DELT && tmp != val_traits::FREE &&
                   (tmp & val_traits::XBIT) == 0)
                 {
-                  uintptr_t v = f.call1 (val_traits().get (tmp), args...);
+                  uintptr_t v = f.call1 (tmp, args...);
                   if (v == tmp ||
                       xatomic_cas_bool (ep + idx + 1, tmp, v))
                     {
                       key_traits().free (k);
-                      val_traits().destroy (tmp);
+                      if (v != tmp)
+                        val_traits().destroy (tmp);
                       return (found);
                     }
 
@@ -538,14 +538,17 @@ struct hash_table
       template <class ...Args>
       uintptr_t call0 (Args ...args)
         { // Call function with default-constructed value and arguments.
-          auto tmp = this->fct ((typename Vtraits::value_type ()), args...);
-          return (Vtraits().make (tmp));
+          auto tmp = (typename Vtraits::value_type ());
+          auto&& rv = this->fct (tmp, args...);
+          return (Vtraits().make (rv));
         }
 
-      template <class T, class ...Args>
-      uintptr_t call1 (const T& x, Args ...args)
+      template <class ...Args>
+      uintptr_t call1 (uintptr_t x, Args ...args)
         { // Call function with stored value and arguments.
-          return (Vtraits().make (this->fct (x, args...)));
+          auto& tmp = Vtraits().get (x);
+          auto&& rv = this->fct (tmp, args...);
+          return (&rv == &tmp ? x : Vtraits().make (rv));
         }
 
       void free (uintptr_t x)
