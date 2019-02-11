@@ -77,6 +77,20 @@ static const int SL_UNLINK_NONE = 0;
 static const int SL_UNLINK_ASSIST = 1;
 static const int SL_UNLINK_FORCE = 2;
 
+inline void
+init_preds_succs (uintptr_t *p)
+{
+  for (int i = 0; i < SL_MAX_DEPTH; ++i)
+    p[i] = 0;
+}
+
+inline void
+init_preds_succs (uintptr_t *p1, uintptr_t *p2)
+{
+  for (int i = 0; i < SL_MAX_DEPTH; ++i)
+    p1[i] = p2[i] = 0;
+}
+
 } // namespace detail
 
 template <class T, class Cmp = std::less<T> >
@@ -203,14 +217,13 @@ struct skip_list
       if (outp)
         *outp = pr;
 
-    retry:
       for (int lvl = (int)this->_Hiwater () - 1; lvl >= 0; --lvl)
         {
           uintptr_t next = _Self::_Node_at (pr, lvl);
           if (next == 0 && lvl >= n)
             continue;
           else if (next & detail::SL_XBIT)
-            goto retry;
+            return (this->_Find_preds (n, key, unlink, preds, succs, outp));
 
           for (it = next; it != 0; )
             {
@@ -233,7 +246,8 @@ struct skip_list
                       else
                         {
                           if (qx & detail::SL_XBIT)
-                            goto retry;
+                            return (this->_Find_preds (n,
+                              key, unlink, preds, succs, outp));
 
                           it = qx;
                         }
@@ -243,8 +257,8 @@ struct skip_list
                 }
 
               if (it == 0 || this->cmpfn (key, _Self::_Getk (it)) ||
-                  (unlink != detail::SL_UNLINK_FORCE &&
-                    (got = !this->cmpfn (_Self::_Getk (it), key))))
+                  ((got = !this->cmpfn (_Self::_Getk (it), key)) &&
+                   unlink != detail::SL_UNLINK_FORCE))
                   break;
 
               pr = it, it = next;
@@ -273,10 +287,8 @@ struct skip_list
       uintptr_t xroot;
       uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
 
-      for (int i = 0; i < detail::SL_MAX_DEPTH; ++i)
-        preds[i] = succs[i] = 0;
+      detail::init_preds_succs (preds, succs);
 
-    retry:
       size_t n = this->_Rand_lvl ();
       if (this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST,
           preds, succs, &xroot) != 0)
@@ -292,7 +304,7 @@ struct skip_list
       if (!xatomic_cas_bool (&_Self::_Node_at(pred, 0), next, nv))
         {
           _Self::_Node(nv)->safe_destroy ();
-          goto retry;
+          return (this->insert (key));
         }
 
       for (int lvl = 1; lvl < n; ++lvl)
@@ -323,7 +335,7 @@ struct skip_list
       else if (!this->_Bump_len (this->_Root_plen (xroot), 1))
         {
           _Self::_Node(nv)->safe_destroy ();
-          goto retry;
+          return (this->insert (key));
         }
 
       return (true);
@@ -332,6 +344,8 @@ struct skip_list
   uintptr_t _Erase (const T& key)
     {
       uintptr_t xroot, preds[detail::SL_MAX_DEPTH];
+      detail::init_preds_succs (preds);
+
       uintptr_t it = this->_Find_preds (this->_Hiwater (), key,
                                         detail::SL_UNLINK_ASSIST,
                                         preds, nullptr, &xroot);
