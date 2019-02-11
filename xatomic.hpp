@@ -3,6 +3,22 @@
 
 #include <cstdint>
 
+/*
+ * This file defines an interface for atomic operations that isn't (quite)
+ * achievable with the C++ standard atomic API. Basically, instead of using
+ * a template class, we use raw pointers.
+ *
+ * This interface is needed because for some inexplicable reason, it is not
+ * possible to get a pointer to the underlying integer in the std::atomic
+ * interface (it may not even exist as such).
+ *
+ * While we are at it, we also define a few additional operations that are
+ * not present in the standard (double CAS, atomic spin).
+ *
+ * Note that these aren't template functions; we only require these atomic
+ * ops to work on pointer-sized values, so we don't bother with anything else.
+ */
+
 namespace xrcu
 {
 

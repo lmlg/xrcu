@@ -466,7 +466,8 @@ struct hash_table
                   (tmp & val_traits::XBIT) == 0)
                 {
                   uintptr_t v = f.call1 (val_traits().get (tmp), args...);
-                  if (xatomic_cas_bool (ep + idx + 1, tmp, v))
+                  if (v == tmp ||
+                      xatomic_cas_bool (ep + idx + 1, tmp, v))
                     {
                       key_traits().free (k);
                       val_traits().destroy (tmp);
@@ -479,6 +480,13 @@ struct hash_table
             }
           else if (this->_Decr_limit ())
             {
+              /* NOTE: If we fail here, then the growth threshold will end up
+               * too small. This simply means that we may have to rehash sooner
+               * than absolutely necessary, which is harmless. On the other
+               * hand, we must NOT try to reincrement the limit back, because
+               * it risks ending up too big, which can be harmful if, for
+               * example, a rehash is triggered before the increment. */
+
               uintptr_t v = f.call0 (args...);
 #ifdef XRCU_HAVE_XATOMIC_DCAS
               if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
