@@ -227,7 +227,7 @@ struct skip_list
 
           for (it = next; it != 0; )
             {
-              next = this->_Node_at (it, lvl);
+              next = _Self::_Node_at (it, lvl);
               while (next & detail::SL_XBIT)
                 {
                   if (unlink == detail::SL_UNLINK_NONE)
@@ -239,7 +239,7 @@ struct skip_list
                     }
                   else
                     {
-                      uintptr_t qx = xatomic_cas (&_Self::_Node_at (pr, lvl),
+                      uintptr_t qx = xatomic_cas (&_Self::_Node_at(pr, lvl),
                                                   it, next & ~detail::SL_XBIT);
                       if (qx == it)
                         it = next & ~detail::SL_XBIT;
@@ -252,22 +252,20 @@ struct skip_list
                           it = qx;
                         }
 
-                      next = it ? this->_Node_at (it, lvl) : 0;
+                      next = it ? _Self::_Node_at (it, lvl) : 0;
                     }
                 }
 
               if (it == 0 || this->cmpfn (key, _Self::_Getk (it)) ||
-                  ((got = !this->cmpfn (_Self::_Getk (it), key)) &&
-                   unlink != detail::SL_UNLINK_FORCE))
+                  (unlink != detail::SL_UNLINK_FORCE &&
+                   (got = !this->cmpfn (_Self::_Getk (it), key))))
                   break;
 
               pr = it, it = next;
             }
 
           if (preds)
-            preds[lvl] = pr;
-          if (succs)
-            succs[lvl] = it;
+            preds[lvl] = pr, succs[lvl] = it;
         }
 
       return (got ? it : 0);
@@ -276,14 +274,12 @@ struct skip_list
   optional<T> find (const T& key) const
     {
       cs_guard g;
-
       uintptr_t rv = this->_Find_preds (0, key, detail::SL_UNLINK_NONE);
       return (rv ? optional<T> (this->_Getk (rv)) : optional<T> ());
     }
 
-  bool insert (const T& key)
+  bool _Insert (const T& key)
     {
-      cs_guard g;
       uintptr_t xroot;
       uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
 
@@ -295,16 +291,15 @@ struct skip_list
         return (false);
 
       uintptr_t nv = (uintptr_t)node_type::copy (n, key);
-      uintptr_t next = _Self::_Node_at(nv, 0) = *succs;
 
-      for (int lvl = 1; lvl < n; ++lvl)
-        this->_Node_at(nv, lvl) = succs[lvl];
+      for (int lvl = 0; lvl < n; ++lvl)
+        _Self::_Node_at(nv, lvl) = succs[lvl];
 
       uintptr_t pred = *preds;
-      if (!xatomic_cas_bool (&_Self::_Node_at(pred, 0), next, nv))
+      if (!xatomic_cas_bool (&_Self::_Node_at(pred, 0), *succs, nv))
         {
           _Self::_Node(nv)->safe_destroy ();
-          return (this->insert (key));
+          return (this->_Insert (key));
         }
 
       for (int lvl = 1; lvl < n; ++lvl)
@@ -317,10 +312,10 @@ struct skip_list
 
             this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST, preds, succs);
             for (int ix = lvl; ix < n; ++ix)
-              if ((pred = this->_Node_at (nv, ix)) == succs[ix])
+              if ((pred = _Self::_Node_at (nv, ix)) == succs[ix])
                 continue;
-              else if (xatomic_cas (&_Self::_Node_at (nv, ix), pred,
-                                    succs[ix]) & detail::SL_XBIT)
+              else if (xatomic_cas (&_Self::_Node_at(nv, ix),
+                                    pred, succs[ix]) & detail::SL_XBIT)
                 { // Another thread is removing this very key - Bail out.
                   this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
                   return (false);
@@ -333,22 +328,25 @@ struct skip_list
           return (false);
         }
       else if (!this->_Bump_len (this->_Root_plen (xroot), 1))
-        {
+        { // A swap is undergoing - Retry.
           _Self::_Node(nv)->safe_destroy ();
-          return (this->insert (key));
+          return (this->_Insert (key));
         }
 
       return (true);
     }
 
+  bool insert (const T& key)
+    {
+      cs_guard g;
+      return (this->_Insert (key));
+    }
+
   uintptr_t _Erase (const T& key)
     {
-      uintptr_t xroot, preds[detail::SL_MAX_DEPTH];
-      detail::init_preds_succs (preds);
-
-      uintptr_t it = this->_Find_preds (this->_Hiwater (), key,
-                                        detail::SL_UNLINK_ASSIST,
-                                        preds, nullptr, &xroot);
+      uintptr_t xroot, it = this->_Find_preds (this->_Hiwater (), key,
+                                               detail::SL_UNLINK_NONE,
+                                               nullptr, nullptr, &xroot);
 
       if (it == 0)
         return (it);
@@ -362,12 +360,13 @@ struct skip_list
           do
             {
               next = qx;
-              qx = xatomic_or (&nodep->next[lvl], detail::SL_XBIT);
+              qx = xatomic_cas (&nodep->next[lvl],
+                next, next | detail::SL_XBIT);
+
               if (qx & detail::SL_XBIT)
                 {
                   if (lvl == 0)
-                    return (false);
-
+                    return (0);
                   break;
                 }
             }
@@ -376,9 +375,19 @@ struct skip_list
 
       // Unlink the item.
       this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
-      bool rv = this->_Bump_len (this->_Root_plen (xroot), -1);
+
+      // Unconditionally decrement the size, even if a swap is underway.
+      for (auto lp = this->_Root_plen (xroot) ; ; )
+        {
+          auto val = *lp;
+          if (xatomic_cas_bool (lp, val, val - 2))
+            break;
+
+          xatomic_spin_nop ();
+        }
+
       finalize (nodep);
-      return (rv ? it : 0);
+      return (it);
     }
 
   bool erase (const T& key)

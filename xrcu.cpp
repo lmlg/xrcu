@@ -298,7 +298,8 @@ bool sync ()
 
 void finalize (finalizable *finp)
 {
-  local_data()->finalize (finp);
+  if (finp)
+    local_data()->finalize (finp);
 }
 
 void flush_finalizers ()
