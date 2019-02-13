@@ -78,16 +78,9 @@ static const int SL_UNLINK_ASSIST = 1;
 static const int SL_UNLINK_FORCE = 2;
 
 inline void
-init_preds_succs (uintptr_t *p)
-{
-  for (int i = 0; i < SL_MAX_DEPTH; ++i)
-    p[i] = 0;
-}
-
-inline void
 init_preds_succs (uintptr_t *p1, uintptr_t *p2)
 {
-  for (int i = 0; i < SL_MAX_DEPTH; ++i)
+  for (unsigned int i = 0; i < SL_MAX_DEPTH; ++i)
     p1[i] = p2[i] = 0;
 }
 

@@ -1,13 +1,16 @@
-#include "utils.hpp"
-#include "../skip_list.hpp"
-#include <vector>
-#include <string>
-#include <vector>
+#ifndef __XRCU_TESTS_SL__
+#define __XRCU_TESTS_SL__   1
+
+#include <xrcu/skip_list.hpp>
 #include <thread>
 #include <cstdio>
 #include <cctype>
+#include "utils.hpp"
 
 typedef xrcu::skip_list<std::string> sklist_t;
+
+namespace sl_test
+{
 
 static inline
 std::string mkstr (int i)
@@ -152,13 +155,18 @@ void test_erase_mt_ov ()
   ASSERT (sx.size () == (ERASER_THREADS - 1) * ERASER_LOOPS / 2);
 }
 
-int main ()
+test_module skip_list_tests
 {
-  TEST ("skip list API in a single thread", test_single_threaded);
-  TEST ("multi threaded insertions", test_insert_mt);
-  TEST ("multi threaded, overlapped insertions", test_insert_mt_ov);
-  TEST ("multi threaded erasures", test_erase_mt);
-  TEST ("multi threaded, overlapped erasures", test_erase_mt_ov);
-  std::cout << "Done\n";
-  return (0);
-}
+  "skip list",
+  {
+    { "API in a single thread", test_single_threaded },
+    { "multi threaded insertions", test_insert_mt },
+    { "multi threaded overlapped insertions", test_insert_mt_ov },
+    { "multi threaded erasures", test_erase_mt },
+    { "multi threaded overlapped erasures", test_erase_mt_ov }
+  }
+};
+
+} // namespace sl_test
+
+#endif

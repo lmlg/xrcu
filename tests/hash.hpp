@@ -1,12 +1,16 @@
+#ifndef __XRCU_TESTS_HASH__
+#define __XRCU_TESTS_HASH__   1
+
 #include <xrcu/hash_table.hpp>
-#include "utils.hpp"
-#include <vector>
-#include <string>
 #include <thread>
 #include <algorithm>
 #include <cstdio>
+#include "utils.hpp"
 
 typedef xrcu::hash_table<int, std::string> table_t;
+
+namespace ht_test
+{
 
 static std::string&
 mutate (std::string& in)
@@ -228,14 +232,19 @@ void test_mutate_mt ()
     ASSERT (q.first <= MUTATOR_KEY_SIZE && q.second.empty ());
 }
 
-int main ()
+test_module hash_table_tests
 {
-  TEST ("hash table API in a single thread", test_single_threaded);
-  TEST ("multi threaded insertions", test_insert_mt);
-  TEST ("multi threaded, overlapped insertions", test_insert_mt_ov);
-  TEST ("multi threaded erasures", test_erase_mt);
-  TEST ("multi threaded, overlapped erasures", test_erase_mt_ov);
-  TEST ("multi threaded mutations", test_mutate_mt);
-  std::cout << "Done\n";
-  return (0);
-}
+  "hash table",
+  {
+    { "API in a single thread", test_single_threaded },
+    { "multi threaded insertions", test_insert_mt },
+    { "multi threaded overlapped insertions", test_insert_mt_ov },
+    { "multi threaded erasures", test_erase_mt },
+    { "multi threaded overlapped erasures", test_erase_mt_ov },
+    { "multi threaded mutations", test_mutate_mt }
+  }
+};
+
+} // namespace ht_test
+
+#endif

@@ -1,4 +1,11 @@
+#ifndef __XRCU_TESTS_UTILS__
+#define __XRCU_TESTS_UTILS__   1
+
 #include <iostream>
+#include <vector>
+#include <string>
+#include <utility>
+#include <initializer_list>
 #include <cstdlib>
 
 #define ASSERT(Cond)   \
@@ -13,11 +20,50 @@
     }   \
   while (0)
 
-#define TEST(Type, Fn)   \
-  do   \
-    {   \
-      std::cout << "Testing " << Type << "...";   \
-      Fn ();   \
-      std::cout << " OK\n";   \
-    }   \
-  while (0)
+struct test_fn
+{
+  std::string msg;
+  void (*fct) (void);
+
+  test_fn (const std::string& m, void (*f) (void)) : msg (m), fct (f)
+    {
+    }
+
+  void run () const
+    {
+      std::cout << "Testing " << this->msg << "...";
+      this->fct ();
+      std::cout << " OK\n";
+    }
+};
+
+std::vector<test_fn>& test_suite ()
+{
+  static std::vector<test_fn> ts;
+  return (ts);
+}
+
+void run_tests ()
+{
+  for (auto& tst : test_suite ())
+    tst.run ();
+
+  std::cout << "Done\n";
+}
+
+struct test_module
+{
+  typedef std::pair<std::string, void (*) (void)> pair_type;
+
+  test_module (const char *name, std::initializer_list<pair_type> tests)
+    {
+      std::string nm = " (";
+      nm += name;
+      nm += ") ";
+
+      for (auto pair : tests)
+        test_suite().push_back (test_fn (pair.first + nm, pair.second));
+    }
+};
+
+#endif
