@@ -57,9 +57,7 @@ struct test_module
 
   test_module (const char *name, std::initializer_list<pair_type> tests)
     {
-      std::string nm = " (";
-      nm += name;
-      nm += ") ";
+      std::string nm = std::string (" (") + name + ") ";
 
       for (auto pair : tests)
         test_suite().push_back (test_fn (pair.first + nm, pair.second));
