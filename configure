@@ -143,6 +143,9 @@ tdir=$(mktemp -d "$(basename $0).XXXXXXX")
 set +C
 trap 'rm -rf "$tdir"' EXIT INT QUIT TERM HUP
 
+tsrc="$tdir/tx.cpp"
+texe="$tdir/texe"
+
 # For cross-compiling, set a default CROSS_COMPILE if it wasn't provided.
 test "$target" && \
 test "$target" != "$build" && \

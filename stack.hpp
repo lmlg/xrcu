@@ -135,8 +135,8 @@ struct stack
       return (this->basep.load (std::memory_order_relaxed));
     }
 
-  template <class Iter>
-  void _Init (Iter first, Iter last, std::false_type)
+  template <class T1>
+  void _Init (T1 first, T1 last, std::false_type)
     {
       size_t len = 0;
       detail::stack_node_base *runp = nullptr, **outp = &runp;
@@ -157,14 +157,14 @@ struct stack
       this->_Base()->sb.reset (runp, len);
     }
 
-  template <class Iter>
-  void _Init (Iter n, Iter value, std::true_type)
+  template <class T1, class T2>
+  void _Init (T1 n, const T2& value, std::true_type)
     {
       detail::stack_node_base *runp = nullptr, **outp = &runp;
 
       try
         {
-          for (Iter x = 0; x != n; ++x)
+          for (T1 x = 0; x != n; ++x)
             {
               *outp = new node_type (value);
               outp = &(*outp)->next;
@@ -189,11 +189,11 @@ struct stack
       this->_Init_base ();
     }
 
-  template <class Iter>
-  stack (Iter first, Iter last)
+  template <class T1, class T2>
+  stack (T1 first, T2 last)
     {
       this->_Init_base ();
-      this->_Init (first, last, typename std::is_integral<Iter>::type ());
+      this->_Init (first, last, typename std::is_integral<T1>::type ());
     }
 
   stack (std::initializer_list<T> lst) : stack (lst.begin (), lst.end ())
@@ -317,15 +317,11 @@ struct stack
 
   stack<T>& operator= (const stack<T>& right)
     {
-      if (this == &right)
-        return (*this);
+      cs_guard g;
 
-      stack<T> tmp (right);
-      auto prev = this->basep.exchange (tmp._Base (),
-                                        std::memory_order_acq_rel);
+      if (this != &right)
+        this->assign (right.begin (), right.end ());
 
-      tmp.basep.store (nullptr, std::memory_order_relaxed);
-      finalize (prev);
       return (*this);
     }
 
@@ -387,13 +383,19 @@ struct stack
 
   void clear ()
     {
-      *this = stack<T> ();
+      auto prev = this->basep.exchange (new _Stkbase (),
+                                        std::memory_order_acq_rel);
+      finalize (prev);
     }
 
   template <class Iter>
   void assign (Iter first, Iter last)
     {
-      *this = stack<T> (first, last);
+      auto tmp = stack<T> (first, last);
+      auto prev = this->basep.exchange (tmp._Base (),
+                                        std::memory_order_acq_rel);
+      finalize (prev);
+      tmp.basep.store (nullptr, std::memory_order_relaxed);
     }
 
   void assign (std::initializer_list<T> lst)
