@@ -1,5 +1,7 @@
 =encoding utf-8
+
 =head1 NAME
+
 XRCU is a library that provides efficient lock-less synchronization for read-mostly tasks and structures
 
 =head1 ABOUT THIS DOCUMENT
@@ -42,13 +44,13 @@ concurrently, it is possible to find ourselves in a situation in which a thread
 is reading some data, while another one is modifying or deleting that same
 piece of data, potentially freeing the memory associated to it.
 
-As such, lock freedom isn't feasible as is in languages like C and C++. We need
+As such, lock freedom isn't feasible as in languages like C and C++. We need
 an additional subsystem that allows us to synchronize reclamation without using
 heavyweight methods like mutexes (we are developing a lock-free library, after
 all).
 
 This is where RCU comes in. RCU, short for read-copy-update, is a mechanism
-that allows us multiple threads to I<read> from memory, while postponing
+that allows multiple threads to I<read> from memory, while postponing
 reclamations until it is safe to do so (i.e: until no readers are operating
 on said memory).
 
@@ -85,7 +87,7 @@ Critical sections are managed through the following API:
 =item void enter_cs (void);
 
 Starts a critical section for the calling thread. Critical sections can be
-safely nested without problem. As long as we are in a critical sections,
+safely nested without problem. As long as we are in a critical section,
 C<finalizable> objects cannot be reclaimed.
 
 =item void exit_cs (void);
@@ -148,10 +150,14 @@ In addition, the following API is available when dealing with finalizables:
 
 =item void finalize (finalizable *F);
 
-Adds the object F to the current thread's list of pending finalizable objects.
+Adds the object F to the calling thread's list of pending finalizable objects.
 Each thread has a limit of C<finalizables>, and keeps count on them. Once they
 reach C<XRCU_MAX_FINS>, they are scheduled for reclamation, and will be
 collected once it's safe to do so.
+
+Only a single call to C<finalize> is allowed on a particular object. If this
+function is called more than once on the same object (Either by the same
+thread, or another), the behaviour is undefined.
 
 =item bool flush_finalizers (void);
 
