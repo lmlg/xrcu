@@ -285,7 +285,7 @@ struct skip_list
 
       uintptr_t nv = (uintptr_t)node_type::copy (n, key);
 
-      for (int lvl = 0; lvl < n; ++lvl)
+      for (size_t lvl = 0; lvl < n; ++lvl)
         _Self::_Node_at(nv, lvl) = succs[lvl];
 
       uintptr_t pred = *preds;
@@ -295,7 +295,7 @@ struct skip_list
           return (this->_Insert (key));
         }
 
-      for (int lvl = 1; lvl < n; ++lvl)
+      for (size_t lvl = 1; lvl < n; ++lvl)
         while (true)
           {
             pred = preds[lvl];
@@ -304,7 +304,7 @@ struct skip_list
               break;   // Successful link.
 
             this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST, preds, succs);
-            for (int ix = lvl; ix < n; ++ix)
+            for (size_t ix = lvl; ix < n; ++ix)
               if ((pred = _Self::_Node_at (nv, ix)) == succs[ix])
                 continue;
               else if (xatomic_cas (&_Self::_Node_at(nv, ix),

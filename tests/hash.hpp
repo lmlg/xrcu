@@ -1,11 +1,11 @@
 #ifndef __XRCU_TESTS_HASH__
 #define __XRCU_TESTS_HASH__   1
 
-#include <xrcu/hash_table.hpp>
+#include "../hash_table.hpp"
+#include "utils.hpp"
 #include <thread>
 #include <algorithm>
 #include <cstdio>
-#include "utils.hpp"
 
 typedef xrcu::hash_table<int, std::string> table_t;
 
@@ -33,11 +33,7 @@ void test_single_threaded ()
   ASSERT (tx.find (-2, std::string ("")) == "def");
 
   for (int i = 0; i < 4000; ++i)
-    {
-      char buf[100];
-      sprintf (buf, "%d.%d", i, 4000 - i);
-      tx.insert (i, std::string (buf));
-    }
+    tx.insert (i, mkstr (i));
 
   for (int i = -3; i < 4000; ++i)
     ASSERT (tx.contains (i));
@@ -78,9 +74,6 @@ void test_single_threaded ()
   ASSERT (old.size () == 0);
   ASSERT (tx.size () != 0);
 }
-
-static const int INSERTER_LOOPS = 1000;
-static const int INSERTER_THREADS = 16;
 
 static void
 mt_inserter (table_t *tx, int index)
@@ -133,9 +126,6 @@ void test_insert_mt_ov ()
 
   ASSERT (tx.size () == (INSERTER_THREADS + 1) * INSERTER_LOOPS / 2);
 }
-
-static const int ERASER_THREADS = 8;
-static const int ERASER_LOOPS = 1000;
 
 static void
 mt_eraser (table_t *tx, int index)
@@ -201,9 +191,6 @@ void test_erase_mt_ov ()
   ASSERT (tx.size () == (ERASER_THREADS - 1) * ERASER_LOOPS / 2);
 }
 
-static const int MUTATOR_KEY_SIZE = 100;
-static const int MUTATOR_THREADS = 16;
-
 static void
 mt_mutator (table_t *tx)
 {
@@ -232,6 +219,25 @@ void test_mutate_mt ()
     ASSERT (q.first <= MUTATOR_KEY_SIZE && q.second.empty ());
 }
 
+void test_iter ()
+{
+  table_t tx;
+
+  for (int i = 0; i < 5; ++i)
+    tx.insert (i, mkstr (i));
+
+  auto it = tx.begin ();
+
+  for (int i = 10; i < 1000; ++i)
+    tx.insert (i, mkstr (i));
+
+  int c = 0;
+  for (; it != tx.end (); ++it, ++c)
+    ;
+
+  ASSERT (c >= 5);
+}
+
 test_module hash_table_tests
 {
   "hash table",
@@ -241,7 +247,8 @@ test_module hash_table_tests
     { "multi threaded overlapped insertions", test_insert_mt_ov },
     { "multi threaded erasures", test_erase_mt },
     { "multi threaded overlapped erasures", test_erase_mt_ov },
-    { "multi threaded mutations", test_mutate_mt }
+    { "multi threaded mutations", test_mutate_mt },
+    { "iteration during modifications", test_iter }
   }
 };
 

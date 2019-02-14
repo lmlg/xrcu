@@ -33,8 +33,9 @@ struct finalizable
 // Add FINP to the list of objects to be finalized after a grace period.
 extern void finalize (finalizable *__finp);
 
-// Force destruction of pending finalizable objects.
-extern void flush_finalizers ();
+/* Force destruction of pending finalizable objects.
+ * Returns true if they were destroyed. */
+extern bool flush_finalizers ();
 
 struct cs_guard
 {

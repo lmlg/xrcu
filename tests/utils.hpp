@@ -7,6 +7,7 @@
 #include <utility>
 #include <initializer_list>
 #include <cstdlib>
+#include <cstdio>
 
 #define ASSERT(Cond)   \
   do   \
@@ -63,5 +64,22 @@ struct test_module
         test_suite().push_back (test_fn (pair.first + nm, pair.second));
     }
 };
+
+// Common constants for all tests.
+static const int INSERTER_LOOPS = 1000;
+static const int INSERTER_THREADS = 16;
+
+static const int ERASER_THREADS = 8;
+static const int ERASER_LOOPS = 1000;
+
+static const int MUTATOR_KEY_SIZE = 100;
+static const int MUTATOR_THREADS = 16;
+
+inline std::string mkstr (int i)
+{
+  char buf[100];
+  sprintf (buf, "%d", i);
+  return (std::string (buf));
+}
 
 #endif

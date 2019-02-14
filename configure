@@ -58,21 +58,21 @@ cmdexists () { type "$1" >/dev/null 2>&1 ; }
 trycxx () { test -z "$CXX" && cmdexists "$1" && CXX=$1 ; }
 
 stripdir () {
-while eval "fnmatch '*/' \"\${$1}\"" ; do eval "$1=\${$1%/}" ; done
+  while eval "fnmatch '*/' \"\${$1}\"" ; do eval "$1=\${$1%/}" ; done
 }
 
 tryflag () {
-printf "checking whether compiler accepts %s... " "$2"
-echo "typedef int x;" > "$tsrc"
-if $CXX $CXXFLAGS_TRY $2 -c -o /dev/null "$tsrc" >/dev/null 2>&1 ; then
-printf "yes\n"
-eval "$1=\"\${$1} \$2\""
-eval "$1=\${$1# }"
-return 0
-else
-printf "no\n"
-return 1
-fi
+  printf "checking whether compiler accepts %s... " "$2"
+  echo "typedef int x;" > "$tsrc"
+  if $CXX $CXXFLAGS_TRY $2 -c -o /dev/null "$tsrc" >/dev/null 2>&1 ; then
+    printf "yes\n"
+    eval "$1=\"\${$1} \$2\""
+    eval "$1=\${$1# }"
+    return 0
+  else
+    printf "no\n"
+    return 1
+  fi
 }
 
 CXXFLAGS_EXTRA=
@@ -93,44 +93,45 @@ maxfins=1000
 
 for arg ; do
 case "$arg" in
---help|-h) usage ;;
---srcdir=*) srcdir=${arg#*=} ;;
---prefix=*) prefix=${arg#*=} ;;
---libdir=*) libdir=${arg#*=} ;;
---includedir=*) includedir=${arg#*=} ;;
---syslibdir=*) syslibdir=${arg#*=} ;;
---enable-shared|--enable-shared=yes) shared=yes ;;
---disable-shared|--enable-shared=no) shared=no ;;
---enable-static|--enable-static=yes) static=yes ;;
---disable-static|--enable-static=no) static=no ;;
---enable-debug|--enable-debug=yes) debug=yes ;;
---disable-debug|--enable-debug=no) debug=no ;;
---enable-warnings|--enable-warnings=yes) warnings=yes ;;
---disable-warnings|--enable-warnings=no) warnings=no ;;
---enable-*|--disable-*|--with-*|--without-*|--*dir=*) ;;
---host=*|--target=*) target=${arg#*=} ;;
---build=*) build=${arg#*=} ;;
---max-finalizers=*) maxfins=${arg#*=} ;;
--* ) echo "$0: unknown option $arg" ;;
-CXX=*) CXX=${arg#*=} ;;
-CXXFLAGS=*) CXXFLAGS=${arg#*=} ;;
-LDFLAGS=*) LDFLAGS=${arg#*=} ;;
-CROSS_COMPILE=*) CROSS_COMPILE=${arg#*=} ;;
-*=*) ;;
-*) build=$arg ; target=$arg ;;
+  --help|-h) usage ;;
+  --srcdir=*) srcdir=${arg#*=} ;;
+  --prefix=*) prefix=${arg#*=} ;;
+  --libdir=*) libdir=${arg#*=} ;;
+  --includedir=*) includedir=${arg#*=} ;;
+  --syslibdir=*) syslibdir=${arg#*=} ;;
+  --enable-shared|--enable-shared=yes) shared=yes ;;
+  --disable-shared|--enable-shared=no) shared=no ;;
+  --enable-static|--enable-static=yes) static=yes ;;
+  --disable-static|--enable-static=no) static=no ;;
+  --enable-debug|--enable-debug=yes) debug=yes ;;
+  --disable-debug|--enable-debug=no) debug=no ;;
+  --enable-warnings|--enable-warnings=yes) warnings=yes ;;
+  --disable-warnings|--enable-warnings=no) warnings=no ;;
+  --enable-*|--disable-*|--with-*|--without-*|--*dir=*) ;;
+  --host=*|--target=*) target=${arg#*=} ;;
+  --build=*) build=${arg#*=} ;;
+  --max-finalizers=*) maxfins=${arg#*=} ;;
+  -* ) echo "$0: unknown option $arg" ;;
+  CXX=*) CXX=${arg#*=} ;;
+  CXXFLAGS=*) CXXFLAGS=${arg#*=} ;;
+  LDFLAGS=*) LDFLAGS=${arg#*=} ;;
+  CROSS_COMPILE=*) CROSS_COMPILE=${arg#*=} ;;
+  *=*) ;;
+  *) build=$arg ; target=$arg ;;
 esac
 done
 
 for i in srcdir prefix libdir includedir ; do
-stripdir $i
+  stripdir $i
 done
 
 # See if we're building out of tree.
 
 if test -z "$srcdir" ; then
-srcdir="${0%/configure}"
-stripdir srcdir
+  srcdir="${0%/configure}"
+  stripdir srcdir
 fi
+
 abs_builddir="$(pwd)" || fail "$0: cannot determine working directory"
 abs_srcdir="$(cd $srcdir && pwd)" || fail "$0: invalid source directory $srcdir"
 test "$abs_srcdir" = "$abs_builddir" && srcdir=.
@@ -142,8 +143,8 @@ tdir=$(mktemp -d "$(basename $0).XXXXXXX")
 set +C
 trap 'rm -rf "$tdir"' EXIT INT QUIT TERM HUP
 
-tsrc="$tdir/tx.c"
-texe="$tdir/tx"
+tsrc="$tdir/tx.cpp"
+texe="$tdir/texe"
 
 # For cross-compiling, set a default CROSS_COMPILE if it wasn't provided.
 test "$target" && \
@@ -163,16 +164,16 @@ test -n "$CXX" || { echo "$0: cannot find a C++ compiler" ; exit 1 ; }
 printf "checking whether C++ compiler works... "
 echo "typedef int x;" > "$tsrc"
 if output=$($CXX $CXXFLAGS -c -o /dev/null "$tsrc" 2>&1) ; then
-printf "yes\n"
+  printf "yes\n"
 else
-printf "no; compiler output follows:\n%s\n" "$output"
-exit 1
+  printf "no; compiler output follows:\n%s\n" "$output"
+  exit 1
 fi
 
 # Find out options to force errors on unknown compiler/linker flags.
-tryflag   CXXFLAGS_TRY  -Werror=unknown-warning-option
-tryflag   CXXFLAGS_TRY  -Werror=unused-command-line-argument
-tryflag   CXXFLAGS_TRY  -Werror=ignored-optimization-argument
+tryflag CXXFLAGS_TRY -Werror=unknown-warning-option
+tryflag CXXFLAGS_TRY -Werror=unused-command-line-argument
+tryflag CXXFLAGS_TRY -Werror=ignored-optimization-argument
 
 # Try to avoid executable stacks in GNU compilers.
 tryflag CXXFLAGS_EXTRA -Wa,--noexecstack
@@ -189,14 +190,17 @@ test "$debug" = yes && CXXFLAGS_AUTO=-g
 # Always try to use -pipe.
 tryflag CXXFLAGS_AUTO -pipe
 
+# See if we can link against pthreads with a compiler switch.
+tryflag CXXFLAGS_AUTO -pthread
+
 if test "x$warnings" = xyes ; then
-tryflag CXXFLAGS_AUTO -Wall
-tryflag CXXFLAGS_AUTO -Wno-parentheses
-tryflag CXXFLAGS_AUTO -Wno-uninitialized
-tryflag CXXFLAGS_AUTO -Wno-missing-braces
-tryflag CXXFLAGS_AUTO -Wno-unused-value
-tryflag CXXFLAGS_AUTO -Wno-unused-but-set-variable
-tryflag CXXFLAGS_AUTO -Wno-unknown-pragmas
+  tryflag CXXFLAGS_AUTO -Wall
+  tryflag CXXFLAGS_AUTO -Wno-parentheses
+  tryflag CXXFLAGS_AUTO -Wno-uninitialized
+  tryflag CXXFLAGS_AUTO -Wno-missing-braces
+  tryflag CXXFLAGS_AUTO -Wno-unused-value
+  tryflag CXXFLAGS_AUTO -Wno-unused-but-set-variable
+  tryflag CXXFLAGS_AUTO -Wno-unknown-pragmas
 fi
 
 case $maxfins in
@@ -229,6 +233,7 @@ CROSS_COMPILE = $CROSS_COMPILE
 EOF
 test "x$static" = xno && echo "STATIC_LIBS ="
 test "x$shared" = xno && echo "SHARED_LIBS ="
+test "x$shared" = xno && echo 'TEST_OBJS = $(OBJS)'
 exec 1>&3 3>&-
 
 test "$srcdir" = "." || ln -sf $srcdir/Makefile .
