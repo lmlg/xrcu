@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_SL__
 #define __XRCU_TESTS_SL__   1
 
-#include <xrcu/skip_list.hpp>
+#include "../skip_list.hpp"
 #include <thread>
 #include <cstdio>
 #include <cctype>
@@ -11,14 +11,6 @@ typedef xrcu::skip_list<std::string> sklist_t;
 
 namespace sl_test
 {
-
-static inline
-std::string mkstr (int i)
-{
-  char buf[100];
-  sprintf (buf, "%d", i);
-  return (std::string (buf));
-}
 
 void test_single_threaded ()
 {
@@ -50,9 +42,6 @@ void test_single_threaded ()
   sl.clear ();
   ASSERT (sl.empty ());
 }
-
-static const int INSERTER_LOOPS = 1000;
-static const int INSERTER_THREADS = 16;
 
 static void
 mt_inserter (sklist_t *sx, int index)
@@ -95,9 +84,6 @@ void test_insert_mt_ov ()
 
   ASSERT (sx.size () == (INSERTER_THREADS + 1) * INSERTER_LOOPS / 2);
 }
-
-static const int ERASER_LOOPS = 1000;
-static const int ERASER_THREADS = 8;
 
 static void
 mt_eraser (sklist_t *sx, int index)

@@ -189,6 +189,9 @@ test "$debug" = yes && CXXFLAGS_AUTO=-g
 # Always try to use -pipe.
 tryflag CXXFLAGS_AUTO -pipe
 
+# See if we can link against pthreads with a compiler switch.
+tryflag CXXFLAGS_AUTO -pthread
+
 if test "x$warnings" = xyes ; then
 tryflag CXXFLAGS_AUTO -Wall
 tryflag CXXFLAGS_AUTO -Wno-parentheses

@@ -10,18 +10,37 @@ namespace xrcu
 template <class T>
 struct optional
 {
-  alignas (alignof (T)) char buf[sizeof (T)];
+  union _Optional
+    {
+      T value;
+      char buf[sizeof (T)];
+
+      T* _Ptr ()
+        {
+          return (&this->value);
+        }
+
+      const T* _Ptr () const
+        {
+          return (&this->value);
+        }
+
+      _Optional () {}
+      ~_Optional () {}
+    };
+
+  _Optional optdata;
   bool valid = false;
 
   void _Init (const T& value)
     {
-      new (&this->buf[0]) T (value);
+      new (this->optdata._Ptr ()) T (value);
       this->valid = true;
     }
 
   void _Init (T&& value)
     {
-      new (&this->buf[0]) T (std::forward<T&&> (value));
+      new (this->optdata._Ptr ()) T (std::forward<T&&> (value));
       this->valid = true;
     }
 
@@ -45,22 +64,22 @@ struct optional
 
   T& operator* ()
     {
-      return (*(T *)(&this->buf[0]));
+      return (*this->optdata._Ptr ());
     }
   
   const T& operator* () const
     {
-      return (*(const T *)(&this->buf[0]));
+      return (*this->optdata._Ptr ());
     }
 
   T* operator-> ()
     {
-      return ((T *)&this->buf[0]);
+      return (this->optdata._Ptr ());
     }
 
   const T* operator-> () const
     {
-      return ((const T *)&this->buf[0]);
+      return (this->optdata._Ptr ());
     }
 
   bool has_value () const
@@ -73,7 +92,7 @@ struct optional
       if (!this->valid)
         return;
 
-      T *ptr = (T *)&this->buf[0];
+      T *ptr = this->optdata._Ptr ();
       ptr->~T ();
       this->valid = false;
     }

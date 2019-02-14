@@ -66,4 +66,21 @@ struct test_module
     }
 };
 
+// Common constants for all tests.
+static const int INSERTER_LOOPS = 1000;
+static const int INSERTER_THREADS = 16;
+
+static const int ERASER_THREADS = 8;
+static const int ERASER_LOOPS = 1000;
+
+static const int MUTATOR_KEY_SIZE = 100;
+static const int MUTATOR_THREADS = 16;
+
+inline std::string mkstr (int i)
+{
+  char buf[100];
+  sprintf (buf, "%d", i);
+  return (std::string (buf));
+}
+
 #endif
