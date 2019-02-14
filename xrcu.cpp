@@ -134,9 +134,10 @@ struct tl_data : public td_link
       return ((this->get_ctr () & GP_NEST_MASK) != 0);
     }
 
-  void flush_all ()
+  bool flush_all ()
     {
-      sync ();
+      if (!sync ())
+        return (false);
 
       for (auto f = this->fin_objs; f != nullptr; )
         {
@@ -147,6 +148,7 @@ struct tl_data : public td_link
 
       this->fin_objs = nullptr;
       this->n_fins = 0;
+      return (true);
     }
 
   void finalize (finalizable *finp)
@@ -302,9 +304,15 @@ void finalize (finalizable *finp)
     local_data()->finalize (finp);
 }
 
-void flush_finalizers ()
+bool flush_finalizers ()
 {
-  local_data()->flush_all ();
+  auto tld = local_data ();
+  bool ret = tld->flush_all ();
+
+  if (!ret)
+    tld->must_flush = true;
+
+  return (ret);
 }
 
 unsigned int xrand ()

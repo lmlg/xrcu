@@ -1,5 +1,6 @@
 #include "hash.hpp"
 #include "sl.hpp"
+#include "xrcu.hpp"
 
 int main ()
 {
