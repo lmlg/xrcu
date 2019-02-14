@@ -232,6 +232,7 @@ CROSS_COMPILE = $CROSS_COMPILE
 EOF
 test "x$static" = xno && echo "STATIC_LIBS ="
 test "x$shared" = xno && echo "SHARED_LIBS ="
+test "x$shared" = xno && echo 'TEST_OBJS = $(OBJS)'
 exec 1>&3 3>&-
 
 test "$srcdir" = "." || ln -sf $srcdir/Makefile .
