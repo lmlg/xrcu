@@ -29,11 +29,11 @@ that debugging is notoriously difficult, and that the benefits generally do
 not compensate for these complexities.
 
 The reason why this library was developed is to give other programmers another
-option when designing high performant, low latency systems. I do not claim that
-lock freedom is a silver bullet when it comes to making programs faster. On the
-other hand, it's also hard to argue that lock contention tends to be a real
-bottleneck, and several projects have moved towards lock free structures given
-the performance benefits they bring (see for example, many kernels).
+option when designing high performant, low latency systems. We do not claim
+that lock freedom is a silver bullet when it comes to making programs faster.
+On the other hand, it's also hard to argue that lock contention tends to be a
+real bottleneck, and several projects have moved towards lock free structures
+given the performance benefits they bring (see for example, many kernels).
 
 =head1 ABOUT RCU
 
@@ -44,8 +44,8 @@ concurrently, it is possible to find ourselves in a situation in which a thread
 is reading some data, while another one is modifying or deleting that same
 piece of data, potentially freeing the memory associated to it.
 
-As such, lock freedom isn't feasible as in languages like C and C++. We need
-an additional subsystem that allows us to synchronize reclamation without using
+As such, lock freedom isn't feasible in languages like C and C++. We need an
+additional subsystem that allows us to synchronize reclamation without using
 heavyweight methods like mutexes (we are developing a lock-free library, after
 all).
 
@@ -55,7 +55,7 @@ reclamations until it is safe to do so (i.e: until no readers are operating
 on said memory).
 
 There are several different ways to implement RCU, and the one chosen in this
-library will be detailed later. For now, it's important to notice that RCU
+library will be detailed later. For now, it's important to point out that RCU
 typically makes reading from shared memory a very cheap operation, while
 imposing more overhead on updates. Thus, it's more suited for tasks in which
 reads are more frequent than modifications.
@@ -68,22 +68,22 @@ properly, we'll describe the RCU interface that this library exposes first.
 =head2 API design
 
 All public interfaces (functions, types, methods, etc) reside in the namespace
-C<xrcu>. It's the explicit intent of the author to mantain compatibility with
+C<xrcu>. It's the explicit intent of the authors to mantain compatibility with
 every interface that was ever exposed. Any breaking changes should be done in
 different interfaces (either by adding new functions, or by overloading).
 
 The implementation of some template types require additional, internal details,
 and those usually reside in a namespace appropriately named C<detail> (Said
-namespace resides in C<xrcu>). It should go without saying that users should
-I<not> rely on those internal details, and that the author may freely break
-compatibility against such details.
+namespace is inside C<xrcu>). It goes without saying that users should I<not>
+rely on those internal details, and that the authors may freely break
+compatibility with them.
 
 XRCU uses some thread-specific data in order to function properly. There may
 be some systems that have issues when dynamically loading libraries that use
 thread-specific data (I believe Windows Vista was among them). Consult with
 your working environment's manual to verify that if you notice any problem.
 
-Finally, it should be mentioned that XRCU requires no initialization/cleanup
+Finally, it should be mentioned that XRCU requires no initializatio or cleanup
 at a library level to function properly. Once the library is installed, you
 can freely use its API without any further action needed.
 
@@ -104,11 +104,11 @@ during the critical section. Writes have to be synchronized independently
 of RCU, however.
 
 Naturally, RCU critical sections don't prevent I<all> memory reclamation,
-they only affect destruction of objects that are derived from a type defined
-in XRCU, called C<finalizable>. If you wish to use the RCU API, all you need to
-do is make your types derive from C<finalizable> and you'll be set. Any other
-memory management function, like C<malloc> and friends is unaffected by RCU as
-implemented in this library.
+they only affect the destruction of objects that are derived from a type
+defined in XRCU, called C<finalizable>. If you wish to use the RCU API, all
+you need to do is make your types derive from C<finalizable> and you'll be set.
+Any other memory management function, like C<malloc> and friends is unaffected
+by RCU as implemented in this library.
 
 Critical sections are managed through the following API:
 
@@ -116,13 +116,13 @@ Critical sections are managed through the following API:
 
 =item void enter_cs (void);
 
-Starts a critical section for the calling thread. Critical sections can be
-safely nested without problem. As long as we are in a critical section,
-C<finalizable> objects cannot be reclaimed.
+Makes the calling thread enter a critical section. Critical sections can be
+safely nested without problem. As long as we are in one, C<finalizable> objects
+cannot be reclaimed.
 
 =item void exit_cs (void);
 
-Ends a critical section. This is generally called after the calling thread
+Exits a critical section. This is generally called after the calling thread
 is done reading from shared memory, and wants to signal that reclamations
 should be re-allowed. The effects of calling C<exit_cs> when the calling thread
 is not in a critical section are undefined.
@@ -162,8 +162,8 @@ interface:
 
   struct finalizable
     {
-      virtual void safe_destroy () {}
-      virtual ~finalizable () {}
+      virtual void safe_destroy ();
+      virtual ~finalizable ();
     };
 
 Under most circumstances, it's enough for a user-defined type to derive from
@@ -181,9 +181,9 @@ In addition, the following API is available when dealing with finalizables:
 =item void finalize (finalizable *F);
 
 Adds the object F to the calling thread's list of pending finalizable objects.
-Each thread has a limit of C<finalizables>, and keeps count on them. Once they
-reach C<XRCU_MAX_FINS>, they are scheduled for reclamation, and will be
-collected once it's safe to do so.
+Each thread has a limit on the number of C<finalizables>. Once that limit is
+reached, they are scheduled for reclamation, and will be collected once it's
+safe to do so.
 
 Only a single call to C<finalize> is allowed on a particular object. If this
 function is called more than once on the same object (Either by the same
@@ -205,10 +205,9 @@ RCU be implemented in a portable, simple way, even if it meant slightly more
 overhead. As such, things like signals and OS-specific syscalls were out.
 
 In the end, for XRCU, we decided to use a global registry that uses a stamp
-to monitor which threads are in critical sections. By using C++ thread_local
-objects, we avoid the need for explicit registration, so that only when a
-thread first uses the RCU API, it is added automatically to the global
-registry.
+to monitor which threads are in critical sections. By using C++ C<thread_local>
+objects, we avoid the need for explicit registration, so that when a thread
+first uses the RCU API, it is added automatically to the global registry.
 
 In order to enter a critical section, all a thread has to do is read a global
 counter, usually bump it by some small value, and then store that value with
@@ -221,14 +220,14 @@ also kept in thread-specific storage. Once a certain number of them have been
 accumulated (specified by the constant XRCU_MAX_FINS), they are scheduled to
 be reclaimed. However, if the calling thread is inside a critical section at
 that point, a special flag is set instead, that tells the thread to immediately
-flush the C<finalizable> objects it has once it's outside the critical section.
+flush its C<finalizable> objects once it's outside the critical section.
 
 In this implementation, the most expensive operation is undoubtedly C<sync>.
 It works by locking the global registry, then checking if any thread is in a
 critical section, and sleeping for short periods of time in case there are.
 The overhead associated to C<sync> is the main reason why critical sections
-should be short, and also the why C<finalizable> objects are accumulated
-instead of being reclaimed right away.
+should be short, and also why C<finalizable> objects are accumulated instead of
+being reclaimed right away.
 
 =head2 Stacks
 
@@ -268,7 +267,7 @@ Initializes a stack to the range [C<first>, C<last>)
 
 =item stack (std::initializer_list<T> lst);
 
-Initializes a stack to hold the values in C<lst>
+Initializes a stack to hold the values in C<lst>.
 
 =item stack (const stack<T>& other);
 
@@ -458,4 +457,20 @@ Given the above, a stack may be traversed using C++'s range-based for loop:
 
   for (const T& x : my_stack)
     ...;
+
+=head3 Implementation details
+
+There really isn't much to say about the internal details of the stack. It's
+probably the easiest lock free structure to implement. As with most other
+implementations, the one in XRCU consists in an atomic pointer to the top
+node and an atomic counter to keep track of its size. The use of RCU prevents
+the biggest issue with this design: The ABA problem.
+
+The only noteworthy thing to point out is that the C<swap> method is safe to
+call from multiple threads as well. In order to achive this, the library uses
+a special I<sentinel> value, that is temporarily set when a swap is undergoing.
+During a swap, C<push> and C<pop> cannot proceed, since they check against that
+special value before modifying the stack.
+
+=head2 Skip lists
 

@@ -118,9 +118,7 @@ struct skip_list
       for (off += off ; ; )
         {
           auto prev = *lenp;
-          if (prev & 1)
-            return (false);
-          else if (xatomic_cas_bool (lenp, prev, prev + off))
+          if (xatomic_cas_bool (lenp, prev, prev + off))
             return (true);
 
           xatomic_spin_nop ();
@@ -368,17 +366,7 @@ struct skip_list
 
       // Unlink the item.
       this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
-
-      // Unconditionally decrement the size, even if a swap is underway.
-      for (auto lp = this->_Root_plen (xroot) ; ; )
-        {
-          auto val = *lp;
-          if (xatomic_cas_bool (lp, val, val - 2))
-            break;
-
-          xatomic_spin_nop ();
-        }
-
+      this->_Bump_len (this->_Root_plen (xroot), -1);
       finalize (nodep);
       return (it);
     }
