@@ -468,9 +468,9 @@ the biggest issue with this design: The ABA problem.
 
 The only noteworthy thing to point out is that the C<swap> method is safe to
 call from multiple threads as well. In order to achive this, the library uses
-a special I<sentinel> value, that is temporarily set when a swap is undergoing.
-During a swap, C<push> and C<pop> cannot proceed, since they check against that
-special value before modifying the stack.
+a special I<sentinel> value, that is temporarily set as the head node when a
+swap is undergoing. During a swap, C<push> and C<pop> cannot proceed, since
+they check against that special value before modifying the stack.
 
 =head2 Skip lists
 
