@@ -113,13 +113,13 @@ struct skip_list
       return (this->_Node(addr)->next - 1);
     }
 
-  bool _Bump_len (uintptr_t *lenp, intptr_t off)
+  void _Bump_len (uintptr_t *lenp, intptr_t off)
     {
       for (off += off ; ; )
         {
           auto prev = *lenp;
           if (xatomic_cas_bool (lenp, prev, prev + off))
-            return (true);
+            return;
 
           xatomic_spin_nop ();
         }
@@ -318,12 +318,8 @@ struct skip_list
           this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
           return (false);
         }
-      else if (!this->_Bump_len (this->_Root_plen (xroot), 1))
-        { // A swap is undergoing - Retry.
-          _Self::_Node(nv)->safe_destroy ();
-          return (this->_Insert (key));
-        }
 
+      this->_Bump_len (this->_Root_plen (xroot), 1);
       return (true);
     }
 
