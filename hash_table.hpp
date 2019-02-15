@@ -22,7 +22,7 @@ namespace detail
 {
 
 template <class T>
-struct ht_wrapper : public finalizable
+struct alignas (8) ht_wrapper : public finalizable
 {
   T value;
 

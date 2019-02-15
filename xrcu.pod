@@ -65,7 +65,37 @@ in a multi-threaded environment, but as its name implies, XRCU chose it because
 it was deemed the best option. Since lock-free structures rely on RCU to work
 properly, we'll describe the RCU interface that this library exposes first.
 
-=head2 RCU critical section management
+=head2 API design
+
+All public interfaces (functions, types, methods, etc) reside in the namespace
+C<xrcu>. It's the explicit intent of the author to mantain compatibility with
+every interface that was ever exposed. Any breaking changes should be done in
+different interfaces (either by adding new functions, or by overloading).
+
+The implementation of some template types require additional, internal details,
+and those usually reside in a namespace appropriately named C<detail> (Said
+namespace resides in C<xrcu>). It should go without saying that users should
+I<not> rely on those internal details, and that the author may freely break
+compatibility against such details.
+
+XRCU uses some thread-specific data in order to function properly. There may
+be some systems that have issues when dynamically loading libraries that use
+thread-specific data (I believe Windows Vista was among them). Consult with
+your working environment's manual to verify that if you notice any problem.
+
+Finally, it should be mentioned that XRCU requires no initialization/cleanup
+at a library level to function properly. Once the library is installed, you
+can freely use its API without any further action needed.
+
+=head2 RCU API
+
+  #include <xrcu/xrcu.hpp>
+
+The following section documents the RCU API that is exposed in XRCU. It's used
+internally quite a bit by other parts of the library, yet it's very useful by
+itself when implementing other concurrent algorithms or data structures.
+
+=head3 RCU critical section management
 
 RCU is based on the concept of I<critical sections>, code fragments that
 execute under the guarantee that no reclamation can take place. This allows
@@ -73,12 +103,12 @@ the user to safely read from shared memory, knowing that it will be valid
 during the critical section. Writes have to be synchronized independently
 of RCU, however.
 
-It should be noted that RCU critical sections don't prevent I<all> memory
-reclamation, they only affect destruction of objects that are derived from
-a type defined in XRCU, called C<finalizable>. If you wish to use the RCU
-API, all you need to do is make your types derive from C<finalizable> and
-you'll be set. Any other memory management function, like C<malloc> and friends
-is unaffected by RCU as implemented in this library.
+Naturally, RCU critical sections don't prevent I<all> memory reclamation,
+they only affect destruction of objects that are derived from a type defined
+in XRCU, called C<finalizable>. If you wish to use the RCU API, all you need to
+do is make your types derive from C<finalizable> and you'll be set. Any other
+memory management function, like C<malloc> and friends is unaffected by RCU as
+implemented in this library.
 
 Critical sections are managed through the following API:
 
@@ -123,7 +153,7 @@ elements from a container without their memory being reclaimed.
 
 =back
 
-=head2 RCU finalizable objects
+=head3 RCU finalizable objects
 
 As it was mentioned before, XRCU defines a type called C<finalizable> that
 is specifically designed to make its destruction safe (i.e: Only once all
@@ -168,4 +198,34 @@ critical section (Much as a call to C<sync> would).
 
 =back
 
+=head3 Implementation details
 
+There are many ways to implement RCU. In this library, it was fundamental that
+RCU be implemented in a portable, simple way, even if it meant slightly more
+overhead. As such, things like signals and OS-specific syscalls were out.
+
+In the end, for XRCU, we decided to use a global registry that uses a stamp
+to monitor which threads are in critical sections. By using C++ thread_local
+objects, we avoid the need for explicit registration, so that only when a
+thread first uses the RCU API, it is added automatically to the global
+registry.
+
+In order to enter a critical section, all a thread has to do is read a global
+counter, usually bump it by some small value, and then store that value with
+release semantics in its thread-specific data. Exiting a critical section is
+almost entirely symmetric (We decrement the thread-specific value), but with a
+small caveat that will be explained below.
+
+When an object is finalized, it's prepended to a singly-linked list that is
+also kept in thread-specific storage. Once a certain number of them have been
+accumulated (specified by the constant XRCU_MAX_FINS), they are scheduled to
+be reclaimed. However, if the calling thread is inside a critical section at
+that point, a special flag is set instead, that tells the thread to immediately
+flush the C<finalizable> objects it has once it's outside the critical section.
+
+In this implementation, the most expensive operation is undoubtedly C<sync>.
+It works by locking the global registry, then checking if any thread is in a
+critical section, and sleeping for short periods of time in case there are.
+The overhead associated to C<sync> is the main reason why critical sections
+should be short, and also the why C<finalizable> objects are accumulated
+instead of being reclaimed right away.
