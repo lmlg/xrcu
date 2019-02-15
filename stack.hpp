@@ -63,6 +63,8 @@ struct stack_iter_base : public cs_guard
 {
   stack_node_base *runp;
   typedef std::forward_iterator_tag iterator_category;
+  typedef ptrdiff_t difference_type;
+  typedef size_t size_type;
 
   stack_iter_base (stack_node_base *rp) : runp (rp) {}
 
@@ -124,6 +126,11 @@ struct stack
 
   std::atomic<_Stkbase *> basep;
   typedef detail::stack_node<T> node_type;
+  typedef T value_type;
+  typedef T& reference;
+  typedef const T& const_reference;
+  typedef ptrdiff_t difference_type;
+  typedef size_t size_type;
 
   _Stkbase* _Base ()
     {
@@ -247,6 +254,10 @@ struct stack
 
   struct iterator : public detail::stack_iter_base
     {
+      typedef T value_type;
+      typedef T& reference;
+      typedef T* pointer;
+
       iterator (detail::stack_node_base *rp = nullptr) :
         detail::stack_iter_base (rp) {}
 
@@ -300,6 +311,11 @@ struct stack
   size_t size () const
     {
       return (this->_Base()->sb.size.load (std::memory_order_relaxed));
+    }
+
+  size_t max_size () const
+    {
+      return (~(size_t)0);
     }
 
   bool empty () const
@@ -388,8 +404,8 @@ struct stack
       finalize (prev);
     }
 
-  template <class Iter>
-  void assign (Iter first, Iter last)
+  template <class T1, class T2>
+  void assign (T1 first, T2 last)
     {
       auto tmp = stack<T> (first, last);
       auto prev = this->basep.exchange (tmp._Base (),
