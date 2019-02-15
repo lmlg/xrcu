@@ -125,6 +125,7 @@ struct stack
     };
 
   std::atomic<_Stkbase *> basep;
+
   typedef detail::stack_node<T> node_type;
   typedef T value_type;
   typedef T& reference;

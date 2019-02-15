@@ -332,8 +332,11 @@ Compares the elements of the stack with the ones in C<other>. Returns true
 if any two of them are not equal.
 
 =item bool operator<  (const stack<T>& other) const;
+
 =item bool operator>  (const stack<T>& other) const;
+
 =item bool operator<= (const stack<T>& other) const;
+
 =item bool operator>= (const stack<T>& other) const;
 
 Lexicographically compares the elements of the stack with the ones in C<other>,
@@ -354,4 +357,105 @@ constructor.
 Assigns to the stack the items in C<lst>.
 
 =back
+
+Stacks also define iterator types that can be used to traverse it, even while
+modifications are taking place. Unlike other cotainer types, no operation
+performed on a stack (other than destruction) invalidates its iterators.
+
+A stack iterator allows the user to get a reference to a particular item in the
+stack, so that modifications are possible. However, keep in mind that the
+iterator itself does not provide any way to synchronize writes, and so the user
+must take care of that.
+
+A stack's iterator is defined as such:
+
+  template <class T>
+  struct stack
+    {
+      struct iterator
+        {
+        };
+
+      struct const_iterator
+        {
+        };
+    };
+
+In C++'s parlance, a stack iterator is a I<forward> iterator, and it may be
+used in any function that accepts them.
+
+An iterator is a C<cs_guard>, which means that an implicit critical section
+is entered when one is created, and is extended until its destruction. As such,
+no finalizable objects will be reclaimed during its lifetime.
+
+The public interface for both iterator's and const_iterator's is identical,
+except that the former yields a mutable object when dereferenced while the
+latter does not. The following section documents said interfaces:
+
+=over 4
+
+=item iterator ();
+
+Default constructor. Leaves the iterator initialized in an invalid state.
+Dereferencing or incrementing this iterator has undefined behavior.
+
+=item iterator (const iterator& other);
+
+Copy constructor. Initializes the iterator to be equal to C<other>.
+
+=item T& operator* ();
+
+For an iterator, returns a reference to the iterator's underlying object.
+
+=item T operator* () const;
+
+For a const_iterator, returns a copy of the iterator's underlying object.
+
+=item iterator& operator++ ();
+
+Pre-increment operator. Moves the iterator forward, and returns itself. If the
+iterator was at the end of the stack, the results are undefined.
+
+=item iterator operator++ (int);
+
+Post-increment operator. Moves the iterator forward, and returns an iterator
+equal to what it was before incrementing. If the iterator was at the end of
+the stack, the results are undefined.
+
+=item bool operator== (const iterator& other);
+
+=item bool operator!= (const iterator& other);
+
+Tests for iterator (in)equality.
+
+=back
+
+In order to get iterators for a particular stack, users may call any of the
+following methods on a stack:
+
+=over 4
+
+=item iterator begin ();
+
+=item const_iterator cbegin () const;
+
+Return an iterator to the first element of the stack.
+
+=item iterator end ();
+
+=item const_iterator cend () const;
+
+Returns an iterator one past the last element of the stack.
+
+=back
+
+Given the above, a stack may be traversed using C++'s range-based for loop:
+
+  stack<T> my_stack;
+  ...
+  for (T& x : my_stack)
+    ...;
+
+  for (const T& x : my_stack)
+    ...;
 
