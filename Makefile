@@ -43,5 +43,5 @@ install: $(ALL_LIBS)
 	cp $(HEADERS) $(includedir)/xrcu
 
 clean:
-	rm -rf *.o *.lo libxrcu.*
+	rm -rf *.o *.lo libxrcu.* tst
 
