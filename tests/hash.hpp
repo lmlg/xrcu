@@ -81,9 +81,7 @@ mt_inserter (table_t *tx, int index)
   for (int i = 0; i < INSERTER_LOOPS; ++i)
     {
       int key = index * INSERTER_LOOPS + i;
-      char buf[100];
-      sprintf (buf, ".%d", -key);
-      ASSERT (tx->insert (key, std::string (buf)));
+      ASSERT (tx->insert (key, mkstr (key)));
     }
 }
 
@@ -107,9 +105,7 @@ mt_inserter_ov (table_t *tx, int index)
   for (int i = 0; i < INSERTER_LOOPS; ++i)
     {
       int key = index * (INSERTER_LOOPS / 2) + i;
-      char buf[100];
-      sprintf (buf, "%d", -key);
-      tx->insert (key, std::string (buf));
+      tx->insert (key, mkstr (key));
     }
 }
 
@@ -143,11 +139,7 @@ static void
 fill_table_for_erase (table_t& tx)
 {
   for (int i = 0; i < ERASER_THREADS * ERASER_LOOPS; ++i)
-    {
-      char buf[100];
-      sprintf (buf, "-%d", i);
-      tx.insert (i, std::string (buf));
-    }
+    tx.insert (i, mkstr (-i - 1));
 }
 
 void test_erase_mt ()
