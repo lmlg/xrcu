@@ -125,6 +125,11 @@ struct optional
       this->_Init (std::forward<T&&> (value));
       return (*this);
     }
+
+  ~optional ()
+    {
+      this->reset ();
+    }
 };
 
 }   // namespace xrcu

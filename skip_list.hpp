@@ -65,7 +65,6 @@ struct sl_node : public finalizable
 
   void safe_destroy ()
     {
-      this->key.reset ();
       sl_dealloc_node (this);
     }
 };
