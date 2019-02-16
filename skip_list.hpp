@@ -548,10 +548,8 @@ struct skip_list
       this->head.store (rh, std::memory_order_relaxed);
       right.head.store (lh, std::memory_order_relaxed);
 
-      *this->_Root_plen((uintptr_t)rh) &= ~(uintptr_t)1;
-      *right._Root_plen((uintptr_t)lh) &= ~(uintptr_t)1;
-
-      std::atomic_thread_fence (std::memory_order_release);
+      xatomic_and (this->_Root_plen ((uintptr_t)rh), ~(uintptr_t)1);
+      xatomic_and (right._Root_plen ((uintptr_t)lh), ~(uintptr_t)1);
     }
 
   void clear ()
