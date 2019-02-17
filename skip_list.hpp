@@ -107,21 +107,29 @@ struct skip_list
       return (ret);
     }
 
+  static node_type* _Node (uintptr_t addr)
+    {
+      return ((node_type *)(addr & ~detail::SL_XBIT));
+    }
+
+  static uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl)
+    {
+      return (_Self::_Node(addr)->next[lvl]);
+    }
+
+  static unsigned int _Node_lvl (uintptr_t addr)
+    {
+      return (_Self::_Node(addr)->nlvl);
+    }
+
   uintptr_t* _Root_plen (uintptr_t addr)
     {
-      return (this->_Node(addr)->next - 1);
+      return (_Self::_Node(addr)->next - 1);
     }
 
   void _Bump_len (uintptr_t *lenp, intptr_t off)
     {
-      for (off += off ; ; )
-        {
-          auto prev = *lenp;
-          if (xatomic_cas_bool (lenp, prev, prev + off))
-            return;
-
-          xatomic_spin_nop ();
-        }
+      xatomic_add (lenp, off + off);
     }
 
   void _Init (Cmp c, unsigned int depth)
@@ -153,21 +161,6 @@ struct skip_list
     {
     }
 
-  static node_type* _Node (uintptr_t addr)
-    {
-      return ((node_type *)(addr & ~detail::SL_XBIT));
-    }
-
-  static uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl)
-    {
-      return (_Self::_Node(addr)->next[lvl]);
-    }
-
-  static unsigned int _Node_lvl (uintptr_t addr)
-    {
-      return (_Self::_Node(addr)->nlvl);
-    }
-
   unsigned int _Rand_lvl ()
     {
       size_t lvl = ctz (xrand ()) * 2 / 3;
@@ -183,6 +176,8 @@ struct skip_list
               this->hi_water.compare_exchange_weak (prev, prev + 1,
                 std::memory_order_acq_rel, std::memory_order_relaxed))
             return (prev);
+
+          xatomic_spin_nop ();
         }
     }
 

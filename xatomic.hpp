@@ -53,6 +53,12 @@ xatomic_swap (uintptr_t *ptr, uintptr_t val)
   return (__atomic_exchange_n (ptr, val, __ATOMIC_ACQ_REL));
 }
 
+inline uintptr_t
+xatomic_add (uintptr_t *ptr, intptr_t val)
+{
+  return (__atomic_fetch_add (ptr, val, __ATOMIC_ACQ_REL));
+}
+
 #else
 
 #include <atomic>
@@ -73,6 +79,13 @@ inline uintptr_t
 xatomic_swap (uintptr_t *ptr, uintptr_t val)
 {
   return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).exchange
+    (ptr, val, std::memory_order_acq_rel));
+}
+
+inline uintptr_t
+xatomic_add (uintptr_t *ptr, intptr_t val)
+{
+  return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).fetch_add
     (ptr, val, std::memory_order_acq_rel));
 }
 
