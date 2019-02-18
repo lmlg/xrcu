@@ -30,6 +30,7 @@ struct stack_node : public stack_node_base, finalizable
   T value;
 
   stack_node (const T& v) : value (v) {}
+  stack_node (T&& v) : value (std::move (v)) {}
 
   template <class ...Args>
   stack_node (Args&&... args) : value (std::forward<Args>(args)...) {}
@@ -223,6 +224,11 @@ struct stack
   void push (const T& value)
     {
       this->_Base()->sb.push_node (new node_type (value));
+    }
+
+  void push (T&& value)
+    {
+      this->_Base()->sb.push_node (new node_type (std::move (value)));
     }
 
   template <class ...Args>
