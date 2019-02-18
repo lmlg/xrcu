@@ -247,7 +247,20 @@ Stacks are templated types, that can be instantiated with a type T:
   template <class T>
   struct stack
     {
+      struct iterator
+        {
+        };
+
+      struct const_iterator
+        {
+        };   
     };
+
+In C++'s parlance, a stack iterator is a I<forward> iterator, and it may be
+used in any function that accepts them.
+
+A stack iterator is a C<cs_guard>, which means that an implicit critical
+section is entered when one is created, and is extended until its destruction.
 
 The following describes the public interface for C<stack<TE<gt>>
 
@@ -355,108 +368,57 @@ constructor.
 
 Assigns to the stack the items in C<lst>.
 
-=back
+=item stack::iterator begin ();
 
-Stacks also define iterator types that can be used to traverse it, even while
-modifications are taking place. Unlike other cotainer types, no operation
-performed on a stack (other than destruction) invalidates its iterators.
+=item stack::const_iterator cbegin () const;
 
-A stack iterator allows the user to get a reference to a particular item in the
-stack, so that modifications are possible. However, keep in mind that the
-iterator itself does not provide any way to synchronize writes, and so the user
-must take care of that.
+Returns an iterator to the first element of the stack.
 
-A stack's iterator is defined as such:
+=item stack::iterator end ();
 
-  template <class T>
-  struct stack
-    {
-      struct iterator
-        {
-        };
+=item stack::const_iterator cend () const;
 
-      struct const_iterator
-        {
-        };
-    };
+Returns an iterator one past the last element of the stack.
 
-In C++'s parlance, a stack iterator is a I<forward> iterator, and it may be
-used in any function that accepts them.
+=item stack::iterator::iterator ();
 
-An iterator is a C<cs_guard>, which means that an implicit critical section
-is entered when one is created, and is extended until its destruction. As such,
-no finalizable objects will be reclaimed during its lifetime.
+Default constructor for stack iterators. Leaves the object in an invalid state.
+Dereferencing or incrementing such an iterator has undefined behavior.
 
-The public interface for both iterator's and const_iterator's is identical,
-except that the former yields a mutable object when dereferenced while the
-latter does not. The following section documents said interfaces:
-
-=over 4
-
-=item iterator ();
-
-Default constructor. Leaves the iterator initialized in an invalid state.
-Dereferencing or incrementing this iterator has undefined behavior.
-
-=item iterator (const iterator& other);
+=item stack::iterator::iterator (const stack::iterator& other);
 
 Copy constructor. Initializes the iterator to be equal to C<other>.
 
-=item T& operator* ();
+=item T& stack::iterator::operator* ();
 
-For an iterator, returns a reference to the iterator's underlying object.
+=item const T& stack::const_iterator::operator* () const;
 
-=item T operator* () const;
+Returns a (possibly const) reference to the iterator's underlying object.
 
-For a const_iterator, returns a copy of the iterator's underlying object.
+=item T* stack::iterator::operator-> ();
 
-=item iterator& operator++ ();
+=item const T* stack::const_iterator::operator-> () const;
 
-Pre-increment operator. Moves the iterator forward, and returns itself. If the
+Returns a (possibly const) pointer to the iterator's underlying object.
+
+=item stack::iterator& stack::iterator::operator++ ();
+
+Pre-increment operator. Moves the iterator forward, and returns it. If the
 iterator was at the end of the stack, the results are undefined.
 
-=item iterator operator++ (int);
+=item stack::iterator stack::iterator::operator++ (int);
 
 Post-increment operator. Moves the iterator forward, and returns an iterator
 equal to what it was before incrementing. If the iterator was at the end of
 the stack, the results are undefined.
 
-=item bool operator== (const iterator& other);
+=item bool stack::iterator::operator== (const stack::iterator& other);
 
-=item bool operator!= (const iterator& other);
+=item bool stack::iterator::operator!= (const stack::iterator& other);
 
 Tests for iterator (in)equality.
 
 =back
-
-In order to get iterators for a particular stack, users may call any of the
-following methods on a stack:
-
-=over 4
-
-=item iterator begin ();
-
-=item const_iterator cbegin () const;
-
-Return an iterator to the first element of the stack.
-
-=item iterator end ();
-
-=item const_iterator cend () const;
-
-Returns an iterator one past the last element of the stack.
-
-=back
-
-Given the above, a stack may be traversed using C++'s range-based for loop:
-
-  stack<T> my_stack;
-  ...
-  for (T& x : my_stack)
-    ...;
-
-  for (const T& x : my_stack)
-    ...;
 
 =head3 Implementation details
 
@@ -471,6 +433,13 @@ call from multiple threads as well. In order to achive this, the library uses
 a special I<sentinel> value, that is temporarily set as the head node when a
 swap is undergoing. During a swap, C<push> and C<pop> cannot proceed, since
 they check against that special value before modifying the stack.
+
+Note that because stack iterators are implicit critical sections, and because
+of stacks' implementation, iterating a stack will always be safe, even in the
+presence of operations like C<push> and C<pop>. The only way for an iterator
+to be invalidated is it's at the beggining of the stack, and a call to C<pop>
+is made. Even then, dereferencing the iterator is valid, but advancing it will
+end prematurely, since the object was unlinked from the stack.
 
 =head2 Interlude: optionals
 
