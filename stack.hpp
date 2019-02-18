@@ -274,6 +274,11 @@ struct stack
         {
           return (((node_type *)this->runp)->value);
         }
+
+      T* operator-> ()
+        {
+          return (&**this);
+        }
     };
 
   struct const_iterator : public detail::stack_iter_base
@@ -284,6 +289,11 @@ struct stack
       T operator* () const
         {
           return (((const node_type *)this->runp)->value);
+        }
+
+      const T* operator-> () const
+        {
+          return (&**this);
         }
     };
 
