@@ -4,6 +4,7 @@
 #include "xrcu.hpp"
 #include "xatomic.hpp"
 #include "optional.hpp"
+#include <cstddef>
 #include <atomic>
 #include <functional>
 #include <initializer_list>
@@ -72,6 +73,7 @@ struct sl_node : public finalizable
 static const uintptr_t SL_XBIT = 1;
 static const unsigned int SL_MAX_DEPTH = 24;
 
+static const int SL_UNLINK_SKIP = -1;
 static const int SL_UNLINK_NONE = 0;
 static const int SL_UNLINK_ASSIST = 1;
 static const int SL_UNLINK_FORCE = 2;
@@ -92,6 +94,17 @@ struct skip_list
   Cmp cmpfn;
   unsigned int max_depth;
   std::atomic<size_t> hi_water { 1 };
+
+  typedef T value_type;
+  typedef T key_type;
+  typedef Cmp key_compare;
+  typedef Cmp value_compare;
+  typedef size_t size_type;
+  typedef ptrdiff_t difference_type;
+  typedef T& reference;
+  typedef const T& const_reference;
+  typedef T* pointer;
+  typedef const T* const_pointer;
 
   typedef detail::sl_node<T> node_type;
   typedef skip_list<T, Cmp> _Self;
@@ -161,6 +174,52 @@ struct skip_list
     {
     }
 
+  struct iterator : public cs_guard
+    {
+      uintptr_t node;
+
+      iterator (uintptr_t addr) : node (addr) {}
+
+      iterator& operator++ ()
+        {
+          while (true)
+            {
+              if (this->node == 0)
+                break;
+
+              this->node = skip_list<T, Cmp>::_Node_at (this->node, 0);
+              if ((this->node & detail::SL_XBIT) == 0)
+                break;
+            }
+
+          return (*this);
+        }
+
+      iterator operator++ (int)
+        {
+          iterator tmp { this->node };
+          ++*this;
+          return (tmp);
+        }
+
+      const T& operator* () const
+        {
+          return (skip_list<T, Cmp>::_Getk (this->node));
+        }
+
+      bool operator== (const iterator& right) const
+        {
+          return (this->node == right.node);
+        }
+
+      bool operator!= (const iterator& right) const
+        {
+          return (this->node != right.node);
+        }
+    };
+
+  typedef iterator const_iterator;
+
   unsigned int _Rand_lvl ()
     {
       size_t lvl = ctz (xrand ()) * 2 / 3;
@@ -215,7 +274,8 @@ struct skip_list
               next = _Self::_Node_at (it, lvl);
               while (next & detail::SL_XBIT)
                 {
-                  if (unlink == detail::SL_UNLINK_NONE)
+                  if (unlink == detail::SL_UNLINK_SKIP ||
+                      unlink == detail::SL_UNLINK_NONE)
                     { // Skip logically deleted elements.
                       if ((it = next & ~detail::SL_XBIT) == 0)
                         break;
@@ -253,7 +313,7 @@ struct skip_list
             preds[lvl] = pr, succs[lvl] = it;
         }
 
-      return (got ? it : 0);
+      return (got || unlink == detail::SL_UNLINK_SKIP ? it : 0);
     }
 
   optional<T> find (const T& key) const
@@ -261,6 +321,33 @@ struct skip_list
       cs_guard g;
       uintptr_t rv = this->_Find_preds (0, key, detail::SL_UNLINK_NONE);
       return (rv ? optional<T> (this->_Getk (rv)) : optional<T> ());
+    }
+
+  bool contains (const T& key) const
+    {
+      cs_guard g;
+      return (this->_Find_preds (0, key, detail::SL_UNLINK_NONE) != 0);
+    }
+
+  const_iterator lower_bound (const T& key) const
+    {
+      uintptr_t preds[detail::SL_MAX_DEPTH], succs[detail::SL_MAX_DEPTH];
+      detail::init_preds_succs (preds, succs);
+
+      cs_guard g;
+      this->_Find_preds (0, key, detail::SL_UNLINK_NONE, preds, succs);
+      return (iterator (preds[0]));
+    }
+
+  const_iterator upper_bound (const T& key) const
+    {
+      cs_guard g;
+      uintptr_t it = this->_Find_preds (0, key, detail::SL_UNLINK_SKIP);
+      const_iterator ret { it };
+      if (it)
+        ++ret;
+
+      return (ret);
     }
 
   bool _Insert (const T& key)
@@ -374,52 +461,6 @@ struct skip_list
       return (it ? optional<T> (_Self::_Getk (it)) : optional<T> ());
     }
 
-  struct iterator : public cs_guard
-    {
-      uintptr_t node;
-
-      iterator (uintptr_t addr) : node (addr) {}
-
-      iterator& operator++ ()
-        {
-          while (true)
-            {
-              if (this->node == 0)
-                break;
-
-              this->node = skip_list<T, Cmp>::_Node_at (this->node, 0);
-              if ((this->node & detail::SL_XBIT) == 0)
-                break;
-            }
-
-          return (*this);
-        }
-
-      iterator operator++ (int)
-        {
-          iterator tmp { this->node };
-          ++*this;
-          return (tmp);
-        }
-
-      const T& operator* () const
-        {
-          return (skip_list<T, Cmp>::_Getk (this->node));
-        }
-
-      bool operator== (const iterator& right) const
-        {
-          return (this->node == right.node);
-        }
-
-      bool operator!= (const iterator& right) const
-        {
-          return (this->node != right.node);
-        }
-    };
-
-  typedef iterator const_iterator;
-
   const_iterator cbegin () const
     {
       auto tmp = (uintptr_t)this->head.load (std::memory_order_relaxed);
@@ -436,11 +477,6 @@ struct skip_list
       return (this->cbegin ());
     }
 
-  const_iterator cend () const
-    {
-      return (iterator (0));
-    }
-
   iterator end ()
     {
       return (this->cend ());
@@ -451,11 +487,21 @@ struct skip_list
       return (this->cend ());
     }
 
+  const_iterator cend () const
+    {
+      return (iterator (0));
+    }
+
   size_t size () const
     {
       cs_guard g;
       uintptr_t ret = *(this->head.load(std::memory_order_relaxed)->next - 1);
       return (ret >> 1);
+    }
+
+  size_t max_size () const
+    {
+      return ((~(size_t)0) >> 1);
     }
 
   bool empty () const
@@ -528,6 +574,9 @@ struct skip_list
 
   void swap (_Self& right)
     {
+      if (this == &right)
+        return;
+
       this->_Lock_root ();
       right._Lock_root ();
 

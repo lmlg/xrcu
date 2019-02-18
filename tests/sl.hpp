@@ -27,6 +27,7 @@ void test_single_threaded ()
 
   auto prev = sl.remove (mkstr (101));
   ASSERT (prev.has_value ());
+  ASSERT (*prev == mkstr (101));
   ASSERT (!sl.erase (mkstr (101)));
   ASSERT (sl.erase (mkstr (999)));
 
@@ -34,11 +35,21 @@ void test_single_threaded ()
     for (auto ch : s)
       ASSERT (isdigit (ch));
 
+  const int PIVOT = 572;
+  auto it = sl.lower_bound (mkstr (PIVOT));
+  ASSERT (it != sl.end ());
+  ASSERT (*it == mkstr (PIVOT - 1));
+
+  it = sl.upper_bound (mkstr (PIVOT));
+  ASSERT (it != sl.end ());
+  ASSERT (*it == mkstr (PIVOT + 1));
+
   sklist_t s2 { std::string ("aaa"), std::string ("bbb"),
                 std::string ("ccc"), std::string ("ddd") };
 
   sl.swap (s2);
   ASSERT (sl.size () == 4);
+  ASSERT (sl.contains (std::string ("aaa")));
   sl.clear ();
   ASSERT (sl.empty ());
 }

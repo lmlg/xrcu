@@ -318,7 +318,7 @@ Assigns the contents of C<other> to the stack and returns C<*this>.
 
 =item stack<T>& operator= (stack<T>&& other);
 
-Move assignment. Takes ownership of the elements in C<other>.
+Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
 
 =item bool operator== (const stack<T>& other) const;
 
@@ -472,5 +472,238 @@ a special I<sentinel> value, that is temporarily set as the head node when a
 swap is undergoing. During a swap, C<push> and C<pop> cannot proceed, since
 they check against that special value before modifying the stack.
 
+=head2 Interlude: optionals
+
+    #include <xrcu/optional.hpp>
+
+Before moving on to the next topic, we need to take a look at an auxiliary
+structure implemented to make things easier and more convenient for users.
+This is the C<optional> type.
+
+An optional is a template type that can hold either an object of type I<T>, or
+be in an uninitialized state. In other words, the value may or may not be
+present. Unlike the usage of a pointer which may be null, an C<optional> never
+performs dynamic memory allocation, as the space required to hold the value is
+always there, even if it's not being used.
+
+Optional types have been standardized in C++17, and are present in many other
+libraries as well. However, since XRCU aims to work with the base minimum of
+C++11 compliant compilers, and because it's designed not to depend on other
+libraries or frameworks, it contains its own (lightweight) implementation.
+
+=head3 Optional API
+
+An optional is defined as such:
+
+    template <class T>
+    struct optional
+      {
+      };
+
+An its public interface is the following:
+
+=over 4
+
+=item optional ();
+
+Default constructor. Initializes the optional I<without> a value.
+
+=item optional (const T& value);
+
+Initializes the optional to contain C<value>.
+
+=item optional (const optional<T>& other);
+
+Copy constructor. If C<other> has a value, then it initializes the optional to
+contain that same value. Otherwise, the optional will contain no value.
+
+=item optional (T&& value);
+
+Move constructor. Initializes the optional by taking ownership of C<value>.
+
+=item T& operator* ();
+
+=item const T& operator* () const;
+
+Returns a (possibly const) reference to the optional's value. The results are
+undefined if the optional does not contain one.
+
+=item T* operator-> ();
+
+=item const T* operator-> () const;
+
+Returns a (possibly const) pointer to the optional's value. The results are
+undefined if the optional does not contain one.
+
+=item bool has_value () const;
+
+Returns true if the optional has a value.
+
+=item void reset () const;
+
+If the optional contains a value, call its destructor and make the optional
+contain no value afterwards. Otherwise, there are no effects.
+
+=item optional& operator= (const optional<T>& other);
+
+If C<other> has a value, assigns it to the optional. Otherwise, calls C<reset>
+on the optional and leaves it without a value. Returns C<*this>.
+
+=item optional& operator= (const T& value);
+
+Assigns C<value> to the optional. Returns C<*this>.
+
+=item optional& operator= (T&& value);
+
+Assigns C<value> to the optional by moving it. Returns C<*this>.
+
+=item ~optional ();
+
+Destroys the value associated to the optional, if it had any.
+
+=back
+
+=head3 Implementation details
+
+Optionals are rather simple: They are implemented by using a union that
+supresses the constructor of the template type, and a flag that marks whether
+the optional has a value or not.
+
+Optionals are very useful when performing lookups in mapped containers, since
+they allow us to bypass the need of additional output parameters to determine
+if a search was successful in an atomic way.
+
 =head2 Skip lists
 
+    #include <xrcu/skip_list.hpp>
+
+A skip list is an associative container that holds a sorted set of unique
+objects of a particular type. In addition to the I<Key> type, skip lists are
+instantiated with a comparator type that allows them to determine ordering.
+
+In XRCU, skip lists meet the requirements for the C++ concept of I<Container>,
+and I<AssociativeContainer>.
+
+=head3 Skip list API
+
+Skip lists are templated types, defined in the following way:
+
+    template <class T, class Cmp = std::less<T> >
+    struct skip_list
+      {
+        struct iterator
+          {
+          };
+
+        struct const_iterator
+          {
+          };
+      };
+
+The template parameter C<T> refers to the key type, whereas C<Cmp> is the
+comparator type, which defaults to C<std::less>. Under most circumstances,
+that is usually enough, but users may instantiate with any other type that
+defines the C<operator()> which returns a boolean.
+
+As shown above, skip list has iterators, but they are non-const in all cases,
+for practicality reasons. Much like with stacks, skip list iterators are
+I<forward> iterators, and an implicit C<cs_guard>.
+
+The following describes the public interface for C<skip_list<T, Cmp<TE<gt>>
+
+=over 4
+
+=item skip_list (Cmp c = Cmp (), unsigned int depth = ...);
+
+Initializes the skip list with comparator C<c>, which defaults to a default
+constructed value. Also takes a parameter indicating the maximum depth a skip
+list node may have, which defaults to an implementation-specified value. Users
+shouldn't need to change the latter, but it can be useful when tuning the
+application for performance. As a general rule, a higher value implies more
+memory usage, but better performance. The current implementation defaults to
+a depth of 24 for this value.
+
+=item template <class Iter> skip_list (Iter first, Iter last, Cmp c = Cmp (), unsigned int depth = ...);
+
+Initializes the skip list to the values in [C<first>, C<last>). The comparator
+and depth parameters are the same as explained above.
+
+=item skip_list (std::initializer_list<T> lst, Cmp c = Cmp (), unsigned int depth = ...);
+
+Initializes the skip list to the values in C<lst>. The comparator and depth
+parameters are the same as explained above.
+
+=item optional<T> find (const T& key) const;
+
+Searches for an element equivalent to C<key> in the skip list, and returns an
+optional with it as its value. If the key couldn't be found, the returned
+optional has no value.
+
+=item bool contains (const T& key) const;
+
+Returns true if C<key> is present in the skip list.
+
+=item bool insert (const T& key) const;
+
+Inserts C<key> in the skip list. Returns true if the key wasn't present
+previous to this call.
+
+=item bool erase (const T& key) const;
+
+Erases C<key> from the skip list. Returns true if the key was present previous
+to this call.
+
+=item optional<T> remove (const T& key);
+
+Erases C<key> from the skip list and returns an optional with that element as
+its value, if the key was present. Otherwise, the returned optional has no
+value.
+
+=item iterator begin ();
+
+=item const_iterator cbegin () const;
+
+Returns an iterator to the first element of the skip list.
+
+=item iterator end ();
+
+=item const_iterator cend () const;
+
+Returns an iterator one past the last element of the skip list.
+
+=item size_t size () const;
+
+Returns the current size of the skip list.
+
+=item size_t max_size () const;
+
+Returns the maximum allowed size for a skip list.
+
+=item bool empty () const;
+
+Returns true if the skip list is empty (i.e: its size is 0).
+
+=item template <class Iter> void assign (Iter first, Iter last);
+
+Assigns to the skip list the elements in [C<first>, C<last>).
+
+=item void assign (std::initializer_list<T> lst);
+
+Assigns to the skip list the elements in C<lst>.
+
+=item skip_list& operator= (const skip_list<T, Cmp>& other);
+
+Assigns the elements in C<other> to the skip list. Returns C<*this>.
+
+=item skip_list& operator= (skip_list<T, Cmp>&& other);
+
+Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
+
+=item void swap (skip_list<T, Cmp>& other);
+
+Swaps the contents of the skip list with C<other>, but only if C<other> is a
+different object.
+
+=item void clear ();
+
+Removes every element from the skip list.
