@@ -368,53 +368,53 @@ constructor.
 
 Assigns to the stack the items in C<lst>.
 
-=item stack::iterator begin ();
+=item iterator begin ();
 
-=item stack::const_iterator cbegin () const;
+=item const_iterator cbegin () const;
 
 Returns an iterator to the first element of the stack.
 
-=item stack::iterator end ();
+=item iterator end ();
 
-=item stack::const_iterator cend () const;
+=item const_iterator cend () const;
 
 Returns an iterator one past the last element of the stack.
 
-=item stack::iterator::iterator ();
+=item iterator::iterator ();
 
 Default constructor for stack iterators. Leaves the object in an invalid state.
 Dereferencing or incrementing such an iterator has undefined behavior.
 
-=item stack::iterator::iterator (const stack::iterator& other);
+=item iterator::iterator (const iterator& other);
 
 Copy constructor. Initializes the iterator to be equal to C<other>.
 
-=item T& stack::iterator::operator* ();
+=item T& iterator::operator* ();
 
-=item const T& stack::const_iterator::operator* () const;
+=item const T& const_iterator::operator* () const;
 
 Returns a (possibly const) reference to the iterator's underlying object.
 
-=item T* stack::iterator::operator-> ();
+=item T* iterator::operator-> ();
 
-=item const T* stack::const_iterator::operator-> () const;
+=item const T* const_iterator::operator-> () const;
 
 Returns a (possibly const) pointer to the iterator's underlying object.
 
-=item stack::iterator& stack::iterator::operator++ ();
+=item iterator& iterator::operator++ ();
 
 Pre-increment operator. Moves the iterator forward, and returns it. If the
 iterator was at the end of the stack, the results are undefined.
 
-=item stack::iterator stack::iterator::operator++ (int);
+=item iterator iterator::operator++ (int);
 
 Post-increment operator. Moves the iterator forward, and returns an iterator
 equal to what it was before incrementing. If the iterator was at the end of
 the stack, the results are undefined.
 
-=item bool stack::iterator::operator== (const stack::iterator& other);
+=item bool iterator::operator== (const iterator& other);
 
-=item bool stack::iterator::operator!= (const stack::iterator& other);
+=item bool iterator::operator!= (const iterator& other);
 
 Tests for iterator (in)equality.
 
@@ -490,6 +490,11 @@ contain that same value. Otherwise, the optional will contain no value.
 
 Move constructor. Initializes the optional by taking ownership of C<value>.
 
+=item optional (optional<T>&& other);
+
+Move constructor. If C<other> has a value, then the optional is initialized
+by taken ownership of it. Otherwise, the optional will have no value.
+
 =item T& operator* ();
 
 =item const T& operator* () const;
@@ -521,6 +526,11 @@ on the optional and leaves it without a value. Returns C<*this>.
 =item optional& operator= (const T& value);
 
 Assigns C<value> to the optional. Returns C<*this>.
+
+=item optional& operator= (optional<T>&& other);
+
+If C<other> has a value, assigns it to the optional by moving it. Otherwise,
+calls C<reset> on the optional and leaves it without a value. Returns C<*this>.
 
 =item optional& operator= (T&& value);
 
@@ -578,7 +588,7 @@ As shown above, skip list has iterators, but they are non-const in all cases,
 for practicality reasons. Much like with stacks, skip list iterators are
 I<forward> iterators, and an implicit C<cs_guard>.
 
-The following describes the public interface for C<skip_list<T, Cmp<TE<gt>>
+The following describes the public interface for C<skip_list<T, CmpE<gt>
 
 =over 4
 
@@ -589,8 +599,7 @@ constructed value. Also takes a parameter indicating the maximum depth a skip
 list node may have, which defaults to an implementation-specified value. Users
 shouldn't need to change the latter, but it can be useful when tuning the
 application for performance. As a general rule, a higher value implies more
-memory usage, but better performance. The current implementation defaults to
-a depth of 24 for this value.
+memory usage, but better performance.
 
 =item template <class Iter> skip_list (Iter first, Iter last, Cmp c = Cmp (), unsigned int depth = ...);
 

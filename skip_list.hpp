@@ -496,8 +496,8 @@ struct skip_list
   size_t size () const
     {
       cs_guard g;
-      uintptr_t ret = *(this->head.load(std::memory_order_relaxed)->next - 1);
-      return (ret >> 1);
+      uintptr_t *p = this->head.load(std::memory_order_relaxed)->next - 1;
+      return (*p >> 1);
     }
 
   size_t max_size () const

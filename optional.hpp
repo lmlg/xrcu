@@ -62,6 +62,12 @@ struct optional
       this->_Init (static_cast<T&&> (value));
     }
 
+  optional (optional<T>&& right)
+    {
+      if (right.valid)
+        this->_Init (static_cast<T&&> (*right));
+    }
+
   T& operator* ()
     {
       return (*this->optdata._Ptr ());
@@ -105,6 +111,15 @@ struct optional
         this->_Init (*right);
       else
         **this = *right;
+
+      return (*this);
+    }
+
+  optional<T>& operator= (optional<T>&& right)
+    {
+      this->reset ();
+      if (right.valid)
+        this->_Init (std::forward<T&&> (*right));
 
       return (*this);
     }
