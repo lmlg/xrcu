@@ -121,6 +121,16 @@ struct skip_list
       return (ret);
     }
 
+  uintptr_t _Head () const
+    {
+      return ((uintptr_t)this->head.load (std::memory_order_relaxed));
+    }
+
+  size_t _Hiwater () const
+    {
+      return (this->hi_water.load (std::memory_order_relaxed));
+    }
+
   static node_type* _Node (uintptr_t addr)
     {
       return ((node_type *)(addr & ~detail::SL_XBIT));
@@ -246,18 +256,12 @@ struct skip_list
       return (*_Self::_Node(addr)->key);
     }
 
-  size_t _Hiwater () const
-    {
-      return (this->hi_water.load (std::memory_order_relaxed));
-    }
-
   uintptr_t _Find_preds (int n, const T& key, int unlink,
       uintptr_t *preds = nullptr, uintptr_t *succs = nullptr,
       uintptr_t *outp = nullptr) const
     {
       bool got = false;
-      uintptr_t pr = (uintptr_t)this->head.load (std::memory_order_relaxed);
-      uintptr_t it = 0;
+      uintptr_t pr = this->_Head (), it = 0;
 
       if (outp)
         *outp = pr;
@@ -337,7 +341,11 @@ struct skip_list
 
       cs_guard g;
       this->_Find_preds (0, key, detail::SL_UNLINK_NONE, preds, succs);
-      return (iterator (preds[0]));
+      const_iterator ret { preds[0] };
+      if (ret.node == this->_Head ())
+        ++ret;
+
+      return (ret);
     }
 
   const_iterator upper_bound (const T& key) const
@@ -464,7 +472,7 @@ struct skip_list
 
   const_iterator cbegin () const
     {
-      auto tmp = (uintptr_t)this->head.load (std::memory_order_relaxed);
+      auto tmp = this->_Head ();
       return (iterator (_Self::_Node_at (tmp, 0)));
     }
 
@@ -546,11 +554,8 @@ struct skip_list
   void assign (Iter first, Iter last)
     {
       _Self tmp (first, last);
-      this->_Lock_root ();
-      auto old = this->head.load (std::memory_order_relaxed);
-      this->head.store (tmp.head.load (std::memory_order_relaxed),
-                        std::memory_order_release);
-      tmp.head.store (old, std::memory_order_relaxed);
+      auto tp = tmp.head.load (std::memory_order_relaxed);
+      tmp.head.store (this->head.exchange (tp, std::memory_order_acq_rel));
     }
 
   void assign (std::initializer_list<T> lst)
@@ -566,11 +571,8 @@ struct skip_list
 
   _Self& operator= (_Self&& right)
     {
-      this->_Lock_root ();
-      auto old = this->head.load (std::memory_order_relaxed);
-      this->head.store (right.head.load (std::memory_order_relaxed),
-                        std::memory_order_release);
-      this->_Fini_root<> (old);
+      auto tp = right.head.load (std::memory_order_relaxed);
+      this->_Fini_root<> (this->head.exchange (tp, std::memory_order_acq_rel));
     }
 
   void swap (_Self& right)

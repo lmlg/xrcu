@@ -18,6 +18,14 @@ void test_single_threaded ()
 
   ASSERT (sl.empty ());
 
+  sl.assign ({ mkstr (-1), mkstr (-2), mkstr (-3) });
+  ASSERT (sl.size () == 3);
+  ASSERT (sl.upper_bound (mkstr (0)) == sl.end ());
+  ASSERT (sl.lower_bound (std::string ("-0")) == sl.begin ());
+
+  sl.clear ();
+  ASSERT (sl.empty ());
+
   for (int i = 0; i < 1000; ++i)
     ASSERT (sl.insert (mkstr (i)));
 
@@ -50,8 +58,6 @@ void test_single_threaded ()
   sl.swap (s2);
   ASSERT (sl.size () == 4);
   ASSERT (sl.contains (std::string ("aaa")));
-  sl.clear ();
-  ASSERT (sl.empty ());
 }
 
 static void
