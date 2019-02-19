@@ -546,7 +546,7 @@ struct hash_table
       template <class ...Args>
       uintptr_t call1 (uintptr_t x, Args ...args)
         { // Call function with stored value and arguments.
-          auto& tmp = Vtraits().get (x);
+          auto&& tmp = Vtraits().get (x);
           auto&& rv = this->fct (tmp, args...);
           return (&rv == &tmp ? x : Vtraits().make (rv));
         }
