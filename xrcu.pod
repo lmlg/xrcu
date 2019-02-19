@@ -685,3 +685,31 @@ different object.
 =item void clear ();
 
 Removes every element from the skip list.
+
+=back
+
+=head3 Implementation details
+
+In XRCU, skip lists are implemented as described in any piece of literature
+that talks about them. Basically, every skip list of depth I<D> has a head
+node that can be linked with up to other I<D> nodes. When performing a lookup
+for an element, we start at the head node, and move horizontally until the
+current element is equal or greater. If it's equal, we the lookup succeeded.
+Otherwise, we move vertically to the next node, until we either find the
+element, or we exhausted every node.
+
+Insertions first perform a lookup, and if the search failed, we create a new
+node with the specified value as its key. The number of linked nodes it will
+have is determined in a semi-random way, but it must never exceed the maximum
+depth of the skip list. After the node is created, we try to atomically linked
+it with its computed predecesors and successors (Returned in the same lookup
+call we did before). If we succeed, the node is considered part of the skip
+list; otherwise, we free it and retry.
+
+Erasing an element proceeds in a similar fashion, only we check that the lookup
+I<did not> fail, and then atomically relink the node's predecessors with the
+node's own successors, thereby removing the key from the skip list.
+
+Skip lists mantain an atomic word to store the length. However, this is used
+slightly differently as one would think, because the lowest bit is used as an
+ad-hoc lock bit in order to serialize concurrent calls to C<swap> and C<clear>.
