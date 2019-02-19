@@ -20,7 +20,7 @@ extern bool sync ();
 // Base type for finalizable objects.
 struct finalizable
 {
-  finalizable *fin_next = nullptr;
+  finalizable *_Fin_next = nullptr;
 
   virtual void safe_destroy ()
     {

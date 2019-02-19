@@ -141,7 +141,7 @@ struct tl_data : public td_link
 
       for (auto f = this->fin_objs; f != nullptr; )
         {
-          auto next = f->fin_next;
+          auto next = f->_Fin_next;
           f->safe_destroy ();
           f = next;
         }
@@ -153,7 +153,7 @@ struct tl_data : public td_link
 
   void finalize (finalizable *finp)
     {
-      finp->fin_next = this->fin_objs;
+      finp->_Fin_next = this->fin_objs;
       this->fin_objs = finp;
 
       if (++this->n_fins < MAX_FINS)

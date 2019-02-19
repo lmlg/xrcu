@@ -504,7 +504,7 @@ struct skip_list
   size_t size () const
     {
       cs_guard g;
-      uintptr_t *p = this->head.load(std::memory_order_relaxed)->next - 1;
+      uintptr_t *p = this->head.load (std::memory_order_relaxed)->next - 1;
       return (*p >> 1);
     }
 
