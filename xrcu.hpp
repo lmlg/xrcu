@@ -51,6 +51,15 @@ struct cs_guard
 };
 
 // Miscellaneous functions that don't belong anywhere else.
+struct atfork
+{
+  void (*prepare) (void);
+  void (*parent) (void);
+  void (*child) (void);
+};
+
+// Fetch the `pthread_atfork' callbacks for XRCU.
+extern atfork atfork_data ();
 
 // Count the number of trailing zeroes.
 

@@ -326,5 +326,43 @@ unsigned int xrand ()
   return (self->xrand_val >> 16);
 }
 
+static void
+atfork_prepare ()
+{
+  global_reg.td_mtx.lock ();
+}
+
+static void
+atfork_parent ()
+{
+  global_reg.td_mtx.unlock ();
+}
+
+static void
+atfork_child ()
+{
+  atfork_parent ();
+  // Reset the registry
+  global_reg.counter.store (1, std::memory_order_relaxed);
+  global_reg.root.init_head ();
+
+  auto self = &tldata;
+  if (!self->init)
+    return;
+
+  // Manually add ourselves to the registry without locking.
+  self->add (&global_reg.root);
+  self->init = true;
+}
+
+atfork atfork_data ()
+{
+  atfork ret;
+  ret.prepare = atfork_prepare;
+  ret.parent = atfork_parent;
+  ret.child = atfork_child;
+  return (ret);
+}
+
 } // namespace rcu
 
