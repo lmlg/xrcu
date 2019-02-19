@@ -234,7 +234,7 @@ struct stack
   template <class ...Args>
   void emplace (Args&& ...args)
     {
-      this->_Base()->sb.push_node (new node_type (args...));
+      this->_Base()->sb.push_node (new node_type (std::forward<Args>(args)...));
     }
 
   T pop ()
