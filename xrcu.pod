@@ -469,7 +469,7 @@ An optional is defined as such:
       {
       };
 
-An its public interface is the following:
+And its public interface is the following:
 
 =over 4
 

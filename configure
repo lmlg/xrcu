@@ -111,7 +111,7 @@ case "$arg" in
   --host=*|--target=*) target=${arg#*=} ;;
   --build=*) build=${arg#*=} ;;
   --max-finalizers=*) maxfins=${arg#*=} ;;
-  -* ) echo "$0: unknown option $arg" ;;
+  -* ) fail "$0: unknown option '$arg'" ;;
   CXX=*) CXX=${arg#*=} ;;
   CXXFLAGS=*) CXXFLAGS=${arg#*=} ;;
   LDFLAGS=*) LDFLAGS=${arg#*=} ;;
