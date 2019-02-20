@@ -299,6 +299,12 @@ struct hash_table
       return (this->vec->nelems.load (std::memory_order_relaxed));
     }
 
+  size_t max_size () const
+    {
+      size_t out;
+      return (find_hsize (~(size_t)0, 0.85f, out));
+    }
+
   bool empty () const
     {
       return (this->size () == 0);
