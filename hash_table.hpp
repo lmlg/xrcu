@@ -302,7 +302,7 @@ struct hash_table
   size_t max_size () const
     {
       size_t out;
-      return (find_hsize (~(size_t)0, 0.85f, out));
+      return (detail::find_hsize (~(size_t)0, 0.85f, out));
     }
 
   bool empty () const
