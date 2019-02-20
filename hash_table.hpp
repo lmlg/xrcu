@@ -548,7 +548,8 @@ struct hash_table
         { // Call function with stored value and arguments.
           auto&& tmp = Vtraits().get (x);
           auto&& rv = this->fct (tmp, args...);
-          return (&rv == &tmp ? x : Vtraits().make (rv));
+          return (Vtraits::XBIT == 1 &&
+            &rv == &tmp ? x : Vtraits().make (rv));
         }
 
       void free (uintptr_t x)
