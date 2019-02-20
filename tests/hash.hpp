@@ -13,16 +13,16 @@ namespace ht_test
 {
 
 static std::string&
-mutate (std::string& in)
+mutate (std::string& in, const char *s)
 {
-  in += "!!!";
+  in += s;
   return (in);
 }
 
 static std::string
-mknew (std::string& in)
+mknew (std::string& in, const char *s)
 {
-  return (in + "!!!");
+  return (in + s);
 }
 
 void test_single_threaded ()
@@ -38,10 +38,10 @@ void test_single_threaded ()
   for (int i = -3; i < 4000; ++i)
     ASSERT (tx.contains (i));
 
-  tx.update (101, mutate);
+  tx.update (101, mutate, "!!!");
   ASSERT (tx.find(101, std::string ("")).find ("!!!") != std::string::npos);
 
-  tx.update (2002, mknew);
+  tx.update (2002, mknew, "!!!");
   ASSERT (tx.find(2002, std::string ("")).find ("!!!") != std::string::npos);
 
   auto old_size = tx.size ();

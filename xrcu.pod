@@ -611,6 +611,14 @@ and depth parameters are the same as explained above.
 Initializes the skip list to the values in C<lst>. The comparator and depth
 parameters are the same as explained above.
 
+=item skip_list (const skip_list<T, Cmp>& other);
+
+Copy constructor. Initializes the skip list to hold the values in C<other>.
+
+=item skip_list (skip_list<T, Cmp>&& other);
+
+Move constructor. Takes ownership of the values in C<other>.
+
 =item optional<T> find (const T& key) const;
 
 Searches for an element equivalent to C<key> in the skip list, and returns an
@@ -713,3 +721,138 @@ node's own successors, thereby removing the key from the skip list.
 Skip lists mantain an atomic word to store the length. However, this is used
 slightly differently as one would think, because the lowest bit is used as an
 ad-hoc lock bit in order to serialize concurrent calls to C<swap> and C<clear>.
+
+=head2 Hash tables
+
+    #include <xrcu/hash_table.hpp>
+
+Hash tables are associative that maps unique keys to values. Ordering is
+unspecified for both keys and values. In addition to the key and value types,
+hash tables are instantiated with a Hashing type and an equality types;
+callables that compute a I<hash value> for a given key, and one that tests for
+equality, given 2 keys, respectively.
+
+Additionally, hash tables mantain a I<load factor> that determines when a full
+rehash is performed. A rehash implies moving all the key-value pairs into a new
+location to reduce the overhead of most operations.
+
+In XRCU, hash tables meet the requirements for the C++ concept of I<Container>
+and I<UnorderedAssociativeContainer>.
+
+=head3 Hash table API
+
+As mentioned above, hash tables are template types, defined like this:
+
+    template <class Key, class Val,
+              class Hash = std::hash<Key>,
+              class Equal = std::equal<Key> >
+    struct hash_table
+      {
+        struct iterator
+          {
+          };
+
+        struct const_iterator
+          {
+          };
+      };
+
+The template parameters should be pretty self explanatory: They refer to the
+key, value, hashing and equality types, in that order. The C<Hash> type has to
+operate on keys and return unsigned integers, whereas the C<Equal> type has to
+operate on two keys and return a boolean value that determines their equality.
+Both are allowed to throw exceptions, although it is not really wise to do so.
+
+Much like with skip lists, hash table iterators are always constant, and also
+an implicit C<cs_guard>.
+
+The following describes public interface for hash tables:
+
+=over 4
+
+=item hash_table (size_t size = 0, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
+
+Initializes the hash table to hold C<size> elements, with a load factor of
+C<lf>, using the equality predicate C<e> and the hasher C<h>. If the load
+factor must be in the range [0.4, 0.9]; if it's not, then it will silently be
+set to the default of 0.85.
+
+=item template <class It> hash_table (It first, It last, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
+
+Initializes the hash table with the values between (C<first>, C<last>]. The
+other parameters work as with the previous constructor.
+
+=item hash_table (std::initializer_list<std::pair<Key, Val> >, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
+
+Initializes the hash table with the values in C<lst>. The rest of the parameters
+work as with the previous constructors.
+
+=item hash_table (const hash_table<Key, Val, Hash, Equal>& other);
+
+Copy constructor. Initializes the hash table with the values in C<other>.
+
+=item hash_table (hash_table<Key, Val, Hash, Equal>&& other);
+
+Move constructor. Takes ownership of the values in C<other>.
+
+=item size_t size () const;
+
+Returns the hash table size.
+
+=item size_t max_size () const;
+
+Returns the maximum allowed size for a hash table.
+
+=item bool empty () const;
+
+Returns true if the hash table is empty.
+
+=item optional<Val> find (const Key& key) const;
+
+=item Val find (const Key& key, const Val& defl) const;
+
+Look for C<key> in the hash table. If it's found, returns the value associated
+to it. If it's not found, returns an empty optional in the first version, or
+C<dfl> in the second one.
+
+=item bool contains (const Key& key) const;
+
+Returns true if the key is present in the hash table.
+
+=item bool insert (const Key& key, const Val& val);
+
+Associates C<key> with C<val> in the hash table. Returns true if the value was
+not present. Otherwise, the former value is replaced.
+
+=item template <class Fn, class ...Args> bool update (const Key& key, Fn f, Args... args);
+
+Updates the value associated to C<key> by calling the C<f> with it and the rest
+of the arguments. In other words, if C<val> is the value associated to key,
+calls C<f (val, args...)> and updates the value with the result. If no value
+was present for that key, the function is called with a default constructed
+value instead (as if by calling C<Val ()>).
+
+Note that the function takes a I<reference> to the value, and so it's possible
+to modify it in place. Additionally, if the function returns the very same
+object that was passed (i.e: the same reference that it received), there won't
+be any updates made. The function can also receive and return a freshly made
+object, and C<update> will work the same. The function may be called more than
+once if the atomic updates fail.
+
+Returns true if C<key> was present before the call.
+
+=item bool erase (const Key& key);
+
+Erases C<key> from the hash table. Returns true if C<key> was present before
+the call.
+
+=item optional<Val> remove (const Key& key);
+
+Removes C<key> from the hash table and returns the value that was associated
+to if, if it was present.
+
+=item void clear ();
+
+Removes every element from the hash table.
+
+=back

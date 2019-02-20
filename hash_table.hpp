@@ -263,18 +263,17 @@ struct hash_table
     }
 
   template <class Iter>
-  hash_table (Iter first, Iter last, size_t size = 0, float ldf = 0.85f,
+  hash_table (Iter first, Iter last, float ldf = 0.85f,
       EqFn e = EqFn (), HashFn h = HashFn ())
     {
-      this->_Init (size, ldf, e, h);
+      this->_Init (0, ldf, e, h);
       for (; first != last; ++first)
         this->insert ((*first).first, (*first).second);
     }
 
   hash_table (std::initializer_list<std::pair<KeyT, ValT> > lst,
-      size_t size = 0, float ldf = 0.85f,
-      EqFn e = EqFn (), HashFn h = HashFn ()) :
-      hash_table (lst.begin (), lst.end (), size, ldf, e, h)
+      float ldf = 0.85f, EqFn e = EqFn (), HashFn h = HashFn ()) :
+      hash_table (lst.begin (), lst.end (), ldf, e, h)
     {
     }
 

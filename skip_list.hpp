@@ -185,6 +185,20 @@ struct skip_list
     {
     }
 
+  skip_list (const _Self& right) : skip_list (right.begin (), right.end ())
+    {
+    }
+
+  skip_list (_Self&& right)
+    {
+      this->head.store (right.head.load (std::memory_order_relaxed),
+                        std::memory_order_relaxed);
+      this->cmpfn = right.cmpfn;
+      this->max_depth = right.max_depth;
+      this->hi_water.store (right.hi_water.load (std::memory_order_relaxed),
+                            std::memory_order_relaxed);
+    }
+
   struct iterator : public cs_guard
     {
       uintptr_t node;
