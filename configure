@@ -185,7 +185,7 @@ tryflag CXXFLAGS -std=c++11
 tryflag CXXFLAGS -O2
 
 # Enable debugging if needed.
-test "$debug" = yes && CXXFLAGS_AUTO=-g
+test "x$debug" = xyes && tryflag CXXFLAGS_AUTO -g
 
 # Always try to use -pipe.
 tryflag CXXFLAGS_AUTO -pipe
@@ -204,7 +204,7 @@ if test "x$warnings" = xyes ; then
 fi
 
 case $maxfins in
-  ''|*[!0-9]*) echo "--max-finalizers must be an integer"; exit 1 ;;
+  ''|*[!0-9]*) fail "--max-finalizers must be an integer" ;;
   *) ;;
 esac
 
