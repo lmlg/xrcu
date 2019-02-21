@@ -726,11 +726,11 @@ ad-hoc lock bit in order to serialize concurrent calls to C<swap> and C<clear>.
 
     #include <xrcu/hash_table.hpp>
 
-Hash tables are associative that maps unique keys to values. Ordering is
-unspecified for both keys and values. In addition to the key and value types,
-hash tables are instantiated with a Hashing type and an equality types;
+Hash tables are associative containers that map unique keys to values. Ordering
+is unspecified for both keys and values. In addition to the key and value types,
+hash tables are instantiated with a hashing type and an equality type;
 callables that compute a I<hash value> for a given key, and one that tests for
-equality, given 2 keys, respectively.
+equality, given two keys, respectively.
 
 Additionally, hash tables mantain a I<load factor> that determines when a full
 rehash is performed. A rehash implies moving all the key-value pairs into a new
@@ -744,8 +744,8 @@ and I<UnorderedAssociativeContainer>.
 As mentioned above, hash tables are template types, defined like this:
 
     template <class Key, class Val,
-              class Hash = std::hash<Key>,
-              class Equal = std::equal<Key> >
+              class Equal = std::equal<Key>,
+              class Hash = std::hash<Key> >
     struct hash_table
       {
         struct iterator
@@ -758,9 +758,9 @@ As mentioned above, hash tables are template types, defined like this:
       };
 
 The template parameters should be pretty self explanatory: They refer to the
-key, value, hashing and equality types, in that order. The C<Hash> type has to
-operate on keys and return unsigned integers, whereas the C<Equal> type has to
-operate on two keys and return a boolean value that determines their equality.
+key, value, equality and hashing types, in that order. The C<Equal> type has to
+operate on two keys and return a boolean value that determines their equality,
+whereas the C<Hash> type has to operate on keys and return unsigned integers.
 Both are allowed to throw exceptions, although it is not really wise to do so.
 
 Much like with skip lists, hash table iterators are always constant, and also
@@ -773,14 +773,17 @@ The following describes public interface for hash tables:
 =item hash_table (size_t size = 0, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
 
 Initializes the hash table to hold C<size> elements, with a load factor of
-C<lf>, using the equality predicate C<e> and the hasher C<h>. If the load
-factor must be in the range [0.4, 0.9]; if it's not, then it will silently be
-set to the default of 0.85.
+C<lf>, using the equality predicate C<e> and the hasher C<h>. The load factor
+must be in the range [0.4, 0.9]; if it's not, then it will silently be set to
+the default of 0.85.
 
 =item template <class It> hash_table (It first, It last, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
 
 Initializes the hash table with the values between (C<first>, C<last>]. The
-other parameters work as with the previous constructor.
+elements in that range must have two public members defined: C<first> and
+C<second>, referring to the key and value of each element, respectively, and
+in a similar fashion to what C<std::pair> does. The other parameters work as
+with the previous constructor.
 
 =item hash_table (std::initializer_list<std::pair<Key, Val> >, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
 
@@ -813,7 +816,7 @@ Returns true if the hash table is empty.
 
 Look for C<key> in the hash table. If it's found, returns the value associated
 to it. If it's not found, returns an empty optional in the first version, or
-C<dfl> in the second one.
+C<defl> in the second one.
 
 =item bool contains (const Key& key) const;
 
@@ -855,4 +858,121 @@ to if, if it was present.
 
 Removes every element from the hash table.
 
+=item template <class Iter> void assign (Iter first, Iter last);
+
+Assigns the elements in [C<first>, C<last>) to the hash table. The same
+restrictions as the range constructor apply here.
+
+=item void assign (std::initializer_list<std::pair<Key, Val>> lst);
+
+Assigns the elements in C<lst> to the hash table.
+
+=item hash_table<Key, Val>& operator= (const hash_table<Key, Val>& other);
+
+Assigns the elements in C<other> to the hash table. Returns C<*this>.
+
+=item hash_table<Key, Val>& operator= (hash_table<Key, Val>&& other);
+
+Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
+
+=item void swap (hash_table<Key, Val>& other);
+
+Swaps the contents of the hash table with C<other>, but only if C<other> is a
+different object.
+
+=item iterator begin ();
+
+=item const_iterator cbegin () const;
+
+Returns an iterator to the first element of the hash table.
+
+=item iterator end ();
+
+=item const_iterator cend () const;
+
+Returns an iterator one past the last element of the hash table.
+
+=item iterator::iterator ();
+
+Default constructor for hash table iterators. Leaves the object in an invalid
+state. Dereferencing or incrementing such an iterator has undefined behavior.
+
+=item iterator::iterator (const iterator& other);
+
+Copy constructor. Initializes the iterator to be equal to C<other>.
+
+=item Key iterator::key () const;
+
+Returns the key for the iterator.
+
+=item Val iterator::value () const;
+
+Returns the value for the iterator.
+
+=item std::pair<Key, Val> iterator::operator* () const;
+
+Returns an C<std::pair> constructed with the key and value of the iterator.
+
+=item iterator& iterator::operator++ ();
+
+Pre-increment operator. Moves the iterator forward and returns it. If the
+iterator was at the end, the results are undefined.
+
+=item iterator iterator::operator++ (int);
+
+Post-increment operator. Moves the iterator forward, and returns an iterator
+equal to what it was before incrementing. If the iterator was at the end, the
+results are undefined.
+
+=item bool iterator::operator== (const iterator& other);
+
+=item bool iterator::operator!= (const iterator& other);
+
+Test for iterator (in)equality.
+
 =back
+
+=head3 Implementation details
+
+Hash tables are somewhat complex, because the atomicity requirements force us
+to do some rather convoluted things. To start off, a hash table is essentially
+a vector of consecutive C<key> and C<value> pairs, with some special values
+indicating C<free> and C<deleted> entries. However, since we can only operate
+atomically on integers, we wrap any other type that is not integral into a
+dynamically allocated pointer. This is done based on the template instantiation
+and is figured out at compile time.
+
+When a lookup is performed, the passed C<key> is hashed with the table's own
+internal hasher and a hash code is computed. Using this code, we produce an
+index into the vector and then we iterate over it, looking for a key that
+matches, or until we find a free entry, in which case the lookup fails.
+
+Insertions are a bit more complicated. We start by performing a lookup, as
+described above, and then determine what to do based on the result: If the
+lookup came up empty, then we need to insert both the key I<and> the value;
+otherwise, we only need to update the value.
+
+If we need to insert the key as well, first we decrement an internal counter
+that keeps track of how many additional elements we can insert before a rehash
+is triggered. If the counter has already reached zero, then we have to rehash
+before inserting the key and value. If no rehash is needed, or after it's done,
+both the key and value are updated atomically (Some platforms allow us to do it
+in a single step, otherwise the operations are done sequentially).
+
+At this point, we have to pause to make a sort of confession: Hash tables as
+implemented in XRCU are not I<entirely> lock free, because rehashing actually
+takes an internal lock (I know, you're crushed). This not because of any
+intrinsical limitation, but rather, to make things easier. Since rehashes are
+probably the least common of the operations, we figured it wasn't that big of
+a deal anyways.
+
+Going back to rehashes, these are the most expensive operations. As mentioned,
+they start off by acquiring an internal lock, and then they iterate over the
+full vector, marking the C<value> indexes with a special bit that signals that
+the table is being rehashed. When this bit is set, insertions and erasures are
+forbidden (They both check for this bit before proceeding).
+
+Erasures are pretty simple in comparison. They obviously perform a lookup on
+the key, and if it didn't come up empty, they atomically swap out the value
+for the special C<empty> constant. Afterwards, they can mutate the key entry
+without atomicity (Because erased entries cannot be reused).

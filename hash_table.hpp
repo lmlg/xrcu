@@ -756,6 +756,9 @@ struct hash_table
 
   void swap (self_type& right)
     {
+      if (this == &right)
+        return;
+
       detail::ht_sentry s1 (&this->lock, ~val_traits::XBIT);
       detail::ht_sentry s2 (&right.lock, ~val_traits::XBIT);
 
