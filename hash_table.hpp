@@ -290,6 +290,8 @@ struct hash_table
       this->loadf = right.loadf;
       this->grow_limit.store ((intptr_t)(this->loadf * this->size ()),
                               std::memory_order_relaxed);
+
+      right.vec = nullptr;
     }
 
   size_t size () const
@@ -751,6 +753,7 @@ struct hash_table
       this->_Assign_vector (right.vec,
         right.grow_limit.load (std::memory_order_relaxed));
       this->loadf = right.loadf;
+      right.vec = nullptr;
       return (*this);
     }
 

@@ -197,6 +197,8 @@ struct skip_list
       this->max_depth = right.max_depth;
       this->hi_water.store (right.hi_water.load (std::memory_order_relaxed),
                             std::memory_order_relaxed);
+
+      right.head.store (nullptr, std::memory_order_relaxed);
     }
 
   struct iterator : public cs_guard
@@ -486,8 +488,7 @@ struct skip_list
 
   const_iterator cbegin () const
     {
-      auto tmp = this->_Head ();
-      return (iterator (_Self::_Node_at (tmp, 0)));
+      return (iterator (_Self::_Node_at (this->_Head (), 0)));
     }
 
   iterator begin ()
@@ -587,6 +588,7 @@ struct skip_list
     {
       auto tp = right.head.load (std::memory_order_relaxed);
       this->_Fini_root<> (this->head.exchange (tp, std::memory_order_acq_rel));
+      right.head.store (nullptr, std::memory_order_relaxed);
     }
 
   void swap (_Self& right)

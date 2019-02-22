@@ -219,6 +219,7 @@ struct stack
     {
       this->basep.store (right.basep.load (std::memory_order_relaxed),
                          std::memory_order_relaxed);
+      right.basep.store (nullptr, std::memory_order_relaxed);
     }
 
   void push (const T& value)
@@ -365,6 +366,7 @@ struct stack
       auto prev = this->basep.exchange (right._Base (),
                                         std::memory_order_acq_rel);
       finalize (prev);
+      right.basep.store (nullptr, std::memory_order_relaxed);
       return (*this);
     }
 
