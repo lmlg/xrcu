@@ -97,8 +97,8 @@ itself when implementing other concurrent algorithms or data structures.
 
 =head3 RCU critical section management
 
-RCU is based on the concept of I<critical sections>, code fragments that
-execute under the guarantee that no reclamation can take place. This allows
+RCU is based on the concept of I<critical sections>, code fragments that are
+executed under the guarantee that no reclamation can take place. This allows
 the user to safely read from shared memory, knowing that it will be valid
 during the critical section. Writes have to be synchronized independently
 of RCU, however.
@@ -180,10 +180,10 @@ In addition, the following API is available when dealing with finalizables:
 
 =item void finalize (finalizable *F);
 
-Adds the object F to the calling thread's list of pending finalizable objects.
-Each thread has a limit on the number of C<finalizables>. Once that limit is
-reached, they are scheduled for reclamation, and will be collected once it's
-safe to do so.
+Adds the object C<F> to the calling thread's list of pending finalizable objects.
+Each thread has a limit on the number of pending C<finalizables>. Once that
+limit is reached, they are scheduled for reclamation, and will be collected
+once it's safe to do so.
 
 Only a single call to C<finalize> is allowed on a particular object. If this
 function is called more than once on the same object (Either by the same
@@ -217,7 +217,7 @@ small caveat that will be explained below.
 
 When an object is finalized, it's prepended to a singly-linked list that is
 also kept in thread-specific storage. Once a certain number of them have been
-accumulated (specified by the constant XRCU_MAX_FINS), they are scheduled to
+accumulated (specified by the constant C<XRCU_MAX_FINS>), they are scheduled to
 be reclaimed. However, if the calling thread is inside a critical section at
 that point, a special flag is set instead, that tells the thread to immediately
 flush its C<finalizable> objects once it's outside the critical section.
@@ -268,7 +268,7 @@ The following describes the public interface for C<stack<TE<gt>>
 
 =item stack ();
 
-Default constructor. Initializes a stack to empty.
+Default constructor. Initializes a stack to be empty.
 
 =item template <class Integer> stack (Integer n, T value);
 
@@ -276,15 +276,15 @@ Initializes a stack to contain C<n> times C<value>.
 
 =item template <class Iter> stack (Iter first, Iter last);
 
-Initializes a stack to the range [C<first>, C<last>)
+Initializes a stack to with the values in the range [C<first>, C<last>)
 
 =item stack (std::initializer_list<T> lst);
 
-Initializes a stack to hold the values in C<lst>.
+Initializes a stack with the values in C<lst>.
 
 =item stack (const stack<T>& other);
 
-Copy constructor. Initializes a stack to hold the values in C<other>.
+Copy constructor. Initializes a stack with the values in C<other>.
 
 =item stack (stack<T>&& other);
 
