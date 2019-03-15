@@ -1,0 +1,1158 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>XRCU Documentation</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:" />
+<style>
+body {
+   color: black;
+   background: white;
+   font-family: Verdana, Arial, sans-serif;
+   margin: 1ex;
+   padding: 1ex;
+   max-width: 120ex;
+   text-align: justify;
+}
+img { border: 0; }
+form { margin: 0; }
+input { margin: 2px; }
+a { color: #006699; }
+a:visited { color: #004477; }
+td {
+   margin: 0;
+   padding: 0;
+}
+div { border-width: 0; }
+dt {
+   margin-top: 0.5ex;
+   margin-left: 2ex;
+   margin-bottom: 0.4ex;
+   padding-bottom: 0;
+   font-weight: bold;
+}
+dd {
+   margin-left: 4ex;
+   padding-left: 1em;
+   margin-right: 2ex;
+   padding-right: 1ex;
+   margin-top: 0.4ex;
+   padding-top: 0.5ex;
+   margin-bottom: 1em;
+   padding-bottom: 0.3ex;
+   border-left: 1px solid #ccccee;
+   border-bottom: 1px solid #ccccee;
+   border-collapse: collapse;
+}
+dd > p {
+   margin-left: 0;
+   padding-left: 0;
+   margin-top: 0;
+   padding-top: 0;
+   margin-bottom: 1ex;
+   padding-bottom: 0;
+}
+code {
+  color: #006600;
+  font-family: Andale Mono, monospace;
+}
+pre {
+  background: #eeeeff;
+  border: 1px solid #ddddff;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.2), inset 0 -2px 2px rgba(0,0,0,0.2);
+  border-radius: 10px;
+  color: black;
+  padding-left: 0ex;
+  padding-top: 1em;
+  padding-bottom: 0;
+  white-space: pre;
+  font-family: Andale Mono, monospace;
+  width: 120ex;
+  margin-left: 1em;
+  width: 98%;
+}
+#TOP {
+  margin-left: 3em;
+  color: #006699;
+  margin-top: 2ex;
+  font-size: 80%;
+  font-weight: bold;
+  border: 0;
+  padding-bottom: 0;
+}
+div.pod > ul {
+  font-size: 80%;
+  margin-left: 3em;
+}
+div.pod > hr { display: none; }
+div.pod > ul > li {
+  font-size: 100%;
+  font-weight: bold;
+}
+div.pod > ul > li > ul > li {
+  font-size: 100%;
+  font-weight: normal;
+}
+div.pod > ul > li > ul > li > ul > li {
+  font-size: 80%;
+  font-weight: normal;
+}
+h1 {
+  color: #006699;
+  margin-top: 2ex;
+  font-size: 180%;
+  font-weight: bold;
+  border-bottom: 2px solid #ff0000;
+  padding-bottom: 0;
+}
+h2 {
+  color: #006699;
+  font-size: 120%;
+  margin-top: 1ex;
+  border-bottom: 2px solid #ff0000;
+  padding-bottom: 0;
+}
+h3 {
+  color: #003344;
+  font-size: 100%;
+  margin-top: 1ex;
+  border-bottom: 1px solid #ff0000;
+  padding-bottom: 0;
+}
+h4 {
+  color: #003344;
+  font-size: 100%;
+  margin-top: 1ex;
+  padding-bottom: 0;
+}
+img { vertical-align: top; }
+li {
+  line-height: 1.2em;
+  list-style-type: none;
+}
+table {
+  margin-left: 3em;
+  margin-top: 1ex;
+  margin-bottom: 1ex;
+  border-spacing: 0px;
+  border-width: 2px;
+  border-collapse: collapse;
+  border-color: #88e;
+  border-style: solid;
+}
+td {
+  padding: 2px 1ex 2px 1ex;
+  border-width: 2px;
+  border-color: #88e;
+  border-style: solid;
+}
+</style>
+</head>
+
+<body>
+
+
+
+<ul id="index">
+  <li><a href="#NAME">NAME</a></li>
+  <li><a href="#ABOUT-THIS-DOCUMENT">ABOUT THIS DOCUMENT</a></li>
+  <li><a href="#ABOUT-LOCK-FREE-ALGORITHMS-AND-STRUCTURES">ABOUT LOCK FREE ALGORITHMS AND STRUCTURES</a></li>
+  <li><a href="#ABOUT-RCU">ABOUT RCU</a>
+    <ul>
+      <li><a href="#API-design">API design</a></li>
+      <li><a href="#RCU-API">RCU API</a>
+        <ul>
+          <li><a href="#RCU-critical-section-management">RCU critical section management</a></li>
+          <li><a href="#RCU-finalizable-objects">RCU finalizable objects</a></li>
+          <li><a href="#Implementation-details">Implementation details</a></li>
+        </ul>
+      </li>
+      <li><a href="#Stacks">Stacks</a>
+        <ul>
+          <li><a href="#Stack-API">Stack API</a></li>
+          <li><a href="#Implementation-details1">Implementation details</a></li>
+        </ul>
+      </li>
+      <li><a href="#Interlude:-optionals">Interlude: optionals</a>
+        <ul>
+          <li><a href="#Optional-API">Optional API</a></li>
+          <li><a href="#Implementation-details2">Implementation details</a></li>
+        </ul>
+      </li>
+      <li><a href="#Skip-lists">Skip lists</a>
+        <ul>
+          <li><a href="#Skip-list-API">Skip list API</a></li>
+          <li><a href="#Implementation-details3">Implementation details</a></li>
+        </ul>
+      </li>
+      <li><a href="#Hash-tables">Hash tables</a>
+        <ul>
+          <li><a href="#Hash-table-API">Hash table API</a></li>
+          <li><a href="#Implementation-details4">Implementation details</a></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><a href="#AUTHORS">AUTHORS</a></li>
+</ul>
+
+<h1 id="NAME">NAME</h1>
+
+<p>XRCU is a library that provides efficient lock-less synchronization for read-mostly tasks and structures</p>
+
+<h1 id="ABOUT-THIS-DOCUMENT">ABOUT THIS DOCUMENT</h1>
+
+<p>This file is meant to document the XRCU library, including internal details and the rationale behind the decisions taken.</p>
+
+<p>This document assumes that the reader is at least somewhat familiar with such concepts as multi-threading, lock-free algorithms and data structures, and read-copy-update (RCU).</p>
+
+<h1 id="ABOUT-LOCK-FREE-ALGORITHMS-AND-STRUCTURES">ABOUT LOCK FREE ALGORITHMS AND STRUCTURES</h1>
+
+<p>The term <i>lock free</i> is used to refer to several different things depending on the author, but the basic idea is that an algorithm or structure is lock free if multiple threads can operate on it without the end result being dependent on said threads&#39; scheduling. That is, it doesn&#39;t matter if the involved threads are suspended or preempted; progress is guaranteed.</p>
+
+<p>The usually mentioned advantage of lock freedom is performance. When you are using lock free algorithms, you naturally avoid using things like mutexes, which can have a non-negligible performance impact. On the other hand, other people point out that lock free algorithms are typically harder to understand, that debugging is notoriously difficult, and that the benefits generally do not compensate for these complexities.</p>
+
+<p>The reason why this library was developed is to give other programmers another option when designing high performant, low latency systems. We do not claim that lock freedom is a silver bullet when it comes to making programs faster. On the other hand, it&#39;s also hard to argue that lock contention tends to be a real bottleneck, and several projects have moved towards lock free structures given the performance benefits they bring (see for example, many kernels).</p>
+
+<h1 id="ABOUT-RCU">ABOUT RCU</h1>
+
+<p>There is a big problem with using lock free algorithms in programming languages that feature manual memory management, and it has to do with memory reclamation. Since lock freedom implies that multiple threads may operate on a given structure concurrently, it is possible to find ourselves in a situation in which a thread is reading some data, while another one is deleting that same piece of data, potentially freeing the memory associated to it.</p>
+
+<p>As such, lock freedom needs an additional twist in languages like C and C++. We need an additional subsystem that allows us to synchronize reclamation without using heavyweight methods like mutexes (we are developing a lock-free library, after all).</p>
+
+<p>This is where RCU comes in. RCU, short for read-copy-update, is a mechanism that allows multiple threads to <i>read</i> from memory, while postponing reclamations until it is safe to do so (i.e: until no readers are operating on said memory). RCU typically assumes that updates are performed using atomic instructions, and isn&#39;t concerned with them (At least, that&#39;s the case in this library).</p>
+
+<p>There are several different ways to implement RCU, and the one chosen in this library will be detailed later. For now, it&#39;s important to point out that RCU typically makes reading from shared memory a very cheap operation, while imposing more overhead on updates. Thus, it&#39;s more suited for tasks in which reads are more frequent than modifications.</p>
+
+<p>It should be noted that RCU is not the only way to manage memory reclamations in a multi-threaded environment, but as its name implies, XRCU chose it because it was deemed the best option. Since our lock-free structures rely on RCU to work properly, we&#39;ll describe the RCU interface that this library exposes first.</p>
+
+<h2 id="API-design">API design</h2>
+
+<p>All public interfaces (functions, types, methods, etc) reside in the namespace <code>xrcu</code>. It&#39;s the explicit intent of the authors to mantain compatibility with every interface that was ever exposed. Any breaking changes should be done in different interfaces (either by adding new functions, or by overloading).</p>
+
+<p>The implementation of some template types require additional, internal details, and those usually reside in a namespace appropriately named <code>detail</code> (Said namespace is inside <code>xrcu</code>). It goes without saying that users should <i>not</i> rely on those internal details, and that the authors may freely break compatibility with them.</p>
+
+<p>XRCU uses some thread-specific data in order to function properly. There may be some systems that have issues when dynamically loading libraries that use thread-specific data (I believe Windows Vista was among them). Consult with your working environment&#39;s manual to verify that if you notice any problem.</p>
+
+<p>Finally, it should be mentioned that XRCU requires no initializatio or cleanup at a library level to function properly. Once the library is installed, you can freely use its API without any further action needed.</p>
+
+<h2 id="RCU-API">RCU API</h2>
+
+<pre><code>  #include &lt;xrcu/xrcu.hpp&gt;</code></pre>
+
+<p>The following section documents the RCU API that is exposed in XRCU. It&#39;s used internally quite a bit by other parts of the library, yet it&#39;s very useful by itself when implementing other concurrent algorithms or data structures.</p>
+
+<h3 id="RCU-critical-section-management">RCU critical section management</h3>
+
+<p>RCU is based on the concept of <i>critical sections</i>, code fragments that are executed under the guarantee that no reclamation can take place. This allows the user to safely read from shared memory, knowing that it will be valid during the critical section. Writes have to be synchronized independently of RCU, however.</p>
+
+<p>Naturally, RCU critical sections don&#39;t prevent <i>all</i> memory reclamation, they only affect the destruction of objects that are derived from a type defined in XRCU, called <code>finalizable</code>. If you wish to use the RCU API, all you need to do is make your types derive from <code>finalizable</code> and use its API, and you&#39;ll be set. Any other memory management function, like <code>malloc</code> and friends is unaffected by RCU as implemented in this library.</p>
+
+<p>Critical sections are managed through the following API:</p>
+
+<dl>
+
+<dt id="void-enter_cs-void">void enter_cs (void);</dt>
+<dd>
+
+<p>Makes the calling thread enter a critical section. Critical sections can be safely nested without problem. As long as we are in one, <code>finalizable</code> objects cannot be reclaimed.</p>
+
+</dd>
+<dt id="void-exit_cs-void">void exit_cs (void);</dt>
+<dd>
+
+<p>Exits a critical section. This is generally called after the calling thread is done reading from shared memory, and wants to signal that reclamations should be re-allowed. The effects of calling <code>exit_cs</code> when the calling thread is not in a critical section are undefined.</p>
+
+</dd>
+<dt id="bool-in_cs-void">bool in_cs (void);</dt>
+<dd>
+
+<p>Returns true if the calling thread is in a critical section; false otherwise.</p>
+
+</dd>
+<dt id="bool-sync-void">bool sync (void);</dt>
+<dd>
+
+<p>Waits until all threads are outside pre-existing critical sections, and returns true afterwards. If a deadlock is detected (because the calling thread is in a critical section, for example), this function returns false immediately without waiting.</p>
+
+</dd>
+<dt id="struct-cs_guard">struct cs_guard</dt>
+<dd>
+
+<p>This type is defined such that its constructor calls <code>enter_cs</code>, and its destructor calls <code>exit_cs</code>; it has no internal state. As its name implies, it&#39;s useful as a guard to manage entering and exiting a critical section in a way that is exception safe. A few types in this library are derived from <code>cs_guard</code>, such as iterators, since they need to examine potentially many elements from a container without their memory being reclaimed.</p>
+
+</dd>
+</dl>
+
+<h3 id="RCU-finalizable-objects">RCU finalizable objects</h3>
+
+<p>As it was mentioned before, XRCU defines a type called <code>finalizable</code> that is specifically designed to make its destruction safe (i.e: Only once all threads are outside a critical section). This type defines the following interface:</p>
+
+<pre><code>  struct finalizable
+    {
+      virtual void safe_destroy ();
+      virtual ~finalizable ();
+    };</code></pre>
+
+<p>Under most circumstances, it&#39;s enough for a user-defined type to derive from <code>finalizable</code> and leave it at that. However, the above 2 methods are provided as virtual for customization&#39;s sake. When a <code>finalizable</code> object is reclaimed by the RCU subsystem, it will call the <code>safe_destroy</code> method. The default implementation simply calls the object&#39;s destructor and frees the memory associated to it. If, for whatever reason, a user wants to override this behaviour, they may do so by extending either of those methods.</p>
+
+<p>In addition, the following API is available when dealing with finalizables:</p>
+
+<dl>
+
+<dt id="void-finalize-finalizable-F">void finalize (finalizable *F);</dt>
+<dd>
+
+<p>Adds the object <code>F</code> to the calling thread&#39;s list of pending finalizable objects. Each thread has a limit on the number of pending <code>finalizables</code>. Once that limit is reached, they are scheduled for reclamation, and will be collected once it&#39;s safe to do so.</p>
+
+<p>Only a single call to <code>finalize</code> is allowed on a particular object. If this function is called more than once on the same object (Either by the same thread, or another), the behaviour is undefined.</p>
+
+</dd>
+<dt id="bool-flush_finalizers-void">bool flush_finalizers (void);</dt>
+<dd>
+
+<p>Schedule all the calling thread&#39;s accumulated <code>finalizable</code> objects for reclamation immediately. Returns true if successful, false if a deadlock was detected. Note that this call may block until all threads are outside a critical section (Much as a call to <code>sync</code> would).</p>
+
+<p>Once a thread exits, an implicit call to this function is made.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details">Implementation details</h3>
+
+<p>There are many ways to implement RCU. In this library, it was fundamental that RCU be implemented in a portable, simple way, even if it meant slightly more overhead. As such, things like signals and OS-specific syscalls were out.</p>
+
+<p>In the end, for XRCU, we decided to use a global registry that uses a stamp to monitor which threads are in critical sections. By using C++ <code>thread_local</code> objects, we avoid the need for explicit registration, so that when a thread first uses the RCU API, it is added automatically to the global registry.</p>
+
+<p>In order to enter a critical section, all a thread has to do is read a global counter, usually bump it by some small value, and then store that value with release semantics in its thread-specific data. Exiting a critical section is almost entirely symmetric (We decrement the thread-specific value), but with a small caveat that will be explained below.</p>
+
+<p>When an object is finalized, it&#39;s prepended to a singly-linked list that is also kept in thread-specific storage. Once a certain number of them have been accumulated (specified by the constant <code>XRCU_MAX_FINS</code>), they are scheduled to be reclaimed. However, if the calling thread is inside a critical section at that point, a special flag is set instead, that tells the thread to immediately flush its <code>finalizable</code> objects once it&#39;s outside the critical section.</p>
+
+<p>In this implementation, the most expensive operation is undoubtedly <code>sync</code>. It works by locking the global registry, then checking if any thread is in a critical section, and sleeping for short periods of time in case there are. The overhead associated to <code>sync</code> is the main reason why critical sections should be short, and also why <code>finalizable</code> objects are accumulated instead of being reclaimed right away.</p>
+
+<h2 id="Stacks">Stacks</h2>
+
+<pre><code>  #include &lt;xrcu/stack.hpp&gt;</code></pre>
+
+<p>Stacks are the simplest of the lock-free data structures: They represent a basic LIFO stack on which you can push and pop items, one at a time. Although their functionality is a bit more limited than other structures, they are still very useful to implement things like atomic free lists.</p>
+
+<p>In XRCU, stacks meet the requirements for the C++ concept of <i>Container</i>.</p>
+
+<h3 id="Stack-API">Stack API</h3>
+
+<p>Stacks are templated types, that can be instantiated with a type T:</p>
+
+<pre><code>  template &lt;class T&gt;
+  struct stack
+    {
+      struct iterator
+        {
+        };
+
+      struct const_iterator
+        {
+        };   
+    };</code></pre>
+
+<p>In C++&#39;s parlance, a stack iterator is a <i>forward</i> iterator, and it may be used in any function that accepts them.</p>
+
+<p>A stack iterator is a <code>cs_guard</code>, which means that an implicit critical section is entered when one is created, and is extended until its destruction.</p>
+
+<p>The following describes the public interface for <code>stack&lt;T&gt;</code></p>
+
+<dl>
+
+<dt id="stack">stack ();</dt>
+<dd>
+
+<p>Default constructor. Initializes a stack to be empty.</p>
+
+</dd>
+<dt id="template-class-Integer-stack-Integer-n-T-value">template &lt;class Integer&gt; stack (Integer n, T value);</dt>
+<dd>
+
+<p>Initializes a stack to contain <code>n</code> times <code>value</code>.</p>
+
+</dd>
+<dt id="template-class-Iter-stack-Iter-first-Iter-last">template &lt;class Iter&gt; stack (Iter first, Iter last);</dt>
+<dd>
+
+<p>Initializes a stack to with the values in the range [<code>first</code>, <code>last</code>)</p>
+
+</dd>
+<dt id="stack-std::initializer_listT-lst">stack (std::initializer_list&lt;T&gt; lst);</dt>
+<dd>
+
+<p>Initializes a stack with the values in <code>lst</code>.</p>
+
+</dd>
+<dt id="stack-const-stackT-other">stack (const stack&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes a stack with the values in <code>other</code>.</p>
+
+</dd>
+<dt id="stack-stackT-other">stack (stack&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move constructor. Takes ownership of the values in <code>other</code>.</p>
+
+</dd>
+<dt id="void-push-const-T-value">void push (const T&amp; value);</dt>
+<dd>
+
+<p>Pushes <code>value</code> to the top of the stack.</p>
+
+</dd>
+<dt id="void-emplace-T-value">void emplace (T&amp;&amp; value);</dt>
+<dd>
+
+<p>Same as <code>push</code>, only it constructs a new item by moving instead of copying.</p>
+
+</dd>
+<dt id="T-pop">T pop ();</dt>
+<dd>
+
+<p>Removes the item at the top of the stack, and returns the value associated. If the stack is empty, it throws an exception of type <code>std::runtime_error</code>.</p>
+
+</dd>
+<dt id="T-top">T top ();</dt>
+<dd>
+
+<p>Fetches the current value at the top of the stack. If it&#39;s empty, it throws an exception of the type <code>std::runtime_error</code>.</p>
+
+</dd>
+<dt id="size_type-size-const">size_type size () const;</dt>
+<dd>
+
+<p>Returns the current size of the stack.</p>
+
+</dd>
+<dt id="size_type-max_size-const">size_type max_size () const;</dt>
+<dd>
+
+<p>Returns the maximum allowed size for the stack.</p>
+
+</dd>
+<dt id="bool-empty-const">bool empty () const;</dt>
+<dd>
+
+<p>Returns true if the stack is empty (equivalent to <code>size () == 0</code>).</p>
+
+</dd>
+<dt id="void-swap-stackT-other">void swap (stack&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Swaps the contents of the stack with <code>other</code>, but only if <code>other</code> is not the same object.</p>
+
+</dd>
+<dt id="stackT-operator-const-stackT-other">stack&lt;T&gt;&amp; operator= (const stack&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Assigns the contents of <code>other</code> to the stack and returns <code>*this</code>.</p>
+
+</dd>
+<dt id="stackT-operator-stackT-other">stack&lt;T&gt;&amp; operator= (stack&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move assignment. Takes ownership of the elements in <code>other</code>. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="bool-operator-const-stackT-other-const">bool operator== (const stack&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+<p>Compares the elements of the stack with the ones in <code>other</code>. Returns true if they are all equal.</p>
+
+</dd>
+<dt id="bool-operator-const-stackT-other-const1">bool operator!= (const stack&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+<p>Compares the elements of the stack with the ones in <code>other</code>. Returns true if any two of them are not equal.</p>
+
+</dd>
+<dt id="bool-operator-const-stackT-other-const2">bool operator&lt; (const stack&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+</dd>
+<dt id="bool-operator-const-stackT-other-const3">bool operator&gt; (const stack&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+</dd>
+<dt id="bool-operator-const-stackT-other-const4">bool operator&lt;= (const stack&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+</dd>
+<dt id="bool-operator-const-stackT-other-const5">bool operator&gt;= (const stack&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+<p>Lexicographically compares the elements of the stack with the ones in <code>other</code>, in a way that is equivalent to calling <code>std::lexicographical_compare</code>.</p>
+
+</dd>
+<dt id="void-clear">void clear ();</dt>
+<dd>
+
+<p>Removes every element from the stack.</p>
+
+</dd>
+<dt id="template-class-T1-class-T2-void-assign-T1-x-T2-y">template &lt;class T1, class T2&gt; void assign (T1 x, T2 y);</dt>
+<dd>
+
+<p>Assigns to the stack the elements described by (x, y). They could be an iterator range, or a pair of (integer, value), as is the case with the stack&#39;s constructor.</p>
+
+</dd>
+<dt id="void-assign-std::initializer_listT-lst">void assign (std::initializer_list&lt;T&gt; lst);</dt>
+<dd>
+
+<p>Assigns to the stack the items in <code>lst</code>.</p>
+
+</dd>
+<dt id="iterator-begin">iterator begin ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cbegin-const">const_iterator cbegin () const;</dt>
+<dd>
+
+<p>Returns an iterator to the first element of the stack.</p>
+
+</dd>
+<dt id="iterator-end">iterator end ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cend-const">const_iterator cend () const;</dt>
+<dd>
+
+<p>Returns an iterator one past the last element of the stack.</p>
+
+</dd>
+<dt id="iterator::iterator">iterator::iterator ();</dt>
+<dd>
+
+<p>Default constructor for stack iterators. Leaves the object in an invalid state. Dereferencing or incrementing such an iterator has undefined behavior.</p>
+
+</dd>
+<dt id="iterator::iterator-const-iterator-other">iterator::iterator (const iterator&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes the iterator to be equal to <code>other</code>.</p>
+
+</dd>
+<dt id="T-iterator::operator">T&amp; iterator::operator* ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-const_iterator::operator-const">const T&amp; const_iterator::operator* () const;</dt>
+<dd>
+
+<p>Returns a (possibly const) reference to the iterator&#39;s underlying object.</p>
+
+</dd>
+<dt id="T-iterator::operator1">T* iterator::operator-&gt; ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-const_iterator::operator--const">const T* const_iterator::operator-&gt; () const;</dt>
+<dd>
+
+<p>Returns a (possibly const) pointer to the iterator&#39;s underlying object.</p>
+
+</dd>
+<dt id="iterator-iterator::operator">iterator&amp; iterator::operator++ ();</dt>
+<dd>
+
+<p>Pre-increment operator. Moves the iterator forward, and returns it. If the iterator was at the end of the stack, the results are undefined.</p>
+
+</dd>
+<dt id="iterator-iterator::operator-int">iterator iterator::operator++ (int);</dt>
+<dd>
+
+<p>Post-increment operator. Moves the iterator forward, and returns an iterator equal to what it was before incrementing. If the iterator was at the end of the stack, the results are undefined.</p>
+
+</dd>
+<dt id="bool-iterator::operator-const-iterator-other">bool iterator::operator== (const iterator&amp; other);</dt>
+<dd>
+
+</dd>
+<dt id="bool-iterator::operator-const-iterator-other1">bool iterator::operator!= (const iterator&amp; other);</dt>
+<dd>
+
+<p>Tests for iterator (in)equality.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details1">Implementation details</h3>
+
+<p>There really isn&#39;t much to say about the internal details of the stack. It&#39;s probably the easiest lock free structure to implement. As with most other implementations, the one in XRCU consists in an atomic pointer to the top node and an atomic counter to keep track of its size. The use of RCU prevents the biggest issue with this design: The ABA problem.</p>
+
+<p>The only noteworthy thing to point out is that the <code>swap</code> method is safe to call from multiple threads as well. In order to achive this, the library uses a special <i>sentinel</i> value, that is temporarily set as the head node when a swap is undergoing. During a swap, <code>push</code> and <code>pop</code> cannot proceed, since they check against that special value before modifying the stack.</p>
+
+<p>Note that because stack iterators are implicit critical sections, and because of stacks&#39; implementation, iterating a stack will always be safe, even in the presence of operations like <code>push</code> and <code>pop</code>. The only way for an iterator to be invalidated is it&#39;s at the beggining of the stack, and a call to <code>pop</code> is made. Even then, dereferencing the iterator is valid, but advancing it will end prematurely, since the object was unlinked from the stack.</p>
+
+<h2 id="Interlude:-optionals">Interlude: optionals</h2>
+
+<pre><code>    #include &lt;xrcu/optional.hpp&gt;</code></pre>
+
+<p>Before moving on to the next topic, we need to take a look at an auxiliary structure implemented to make things easier and more convenient for users. This is the <code>optional</code> type.</p>
+
+<p>An optional is a template type that can hold either an object of type <i>T</i>, or be in an uninitialized state. In other words, the value may or may not be present. Unlike the usage of a pointer which may be null, an <code>optional</code> never performs dynamic memory allocation, as the space required to hold the value is always there, even if it&#39;s not being used.</p>
+
+<p>Optional types have been standardized in C++17, and are present in many other libraries as well. However, since XRCU aims to work with the base minimum of C++11 compliant compilers, and because it&#39;s designed not to depend on other libraries or frameworks, it contains its own (lightweight) implementation.</p>
+
+<h3 id="Optional-API">Optional API</h3>
+
+<p>An optional is defined as such:</p>
+
+<pre><code>    template &lt;class T&gt;
+    struct optional
+      {
+      };</code></pre>
+
+<p>And its public interface is the following:</p>
+
+<dl>
+
+<dt id="optional">optional ();</dt>
+<dd>
+
+<p>Default constructor. Initializes the optional without a value.</p>
+
+</dd>
+<dt id="optional-const-T-value">optional (const T&amp; value);</dt>
+<dd>
+
+<p>Initializes the optional to contain <code>value</code>.</p>
+
+</dd>
+<dt id="optional-const-optionalT-other">optional (const optional&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. If <code>other</code> has a value, then it initializes the optional to contain that same value. Otherwise, the optional will contain no value.</p>
+
+</dd>
+<dt id="optional-T-value">optional (T&amp;&amp; value);</dt>
+<dd>
+
+<p>Move constructor. Initializes the optional by taking ownership of <code>value</code>.</p>
+
+</dd>
+<dt id="optional-optionalT-other">optional (optional&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move constructor. If <code>other</code> has a value, then the optional is initialized by taken ownership of it. Otherwise, the optional will have no value.</p>
+
+</dd>
+<dt id="T-operator">T&amp; operator* ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-operator-const">const T&amp; operator* () const;</dt>
+<dd>
+
+<p>Returns a (possibly const) reference to the optional&#39;s value. The results are undefined if the optional does not contain one.</p>
+
+</dd>
+<dt id="T-operator1">T* operator-&gt; ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-operator--const">const T* operator-&gt; () const;</dt>
+<dd>
+
+<p>Returns a (possibly const) pointer to the optional&#39;s value. The results are undefined if the optional does not contain one.</p>
+
+</dd>
+<dt id="bool-has_value-const">bool has_value () const;</dt>
+<dd>
+
+<p>Returns true if the optional has a value.</p>
+
+</dd>
+<dt id="void-reset-const">void reset () const;</dt>
+<dd>
+
+<p>If the optional contains a value, call its destructor and make the optional contain no value afterwards. Otherwise, there are no effects.</p>
+
+</dd>
+<dt id="optional-operator-const-optionalT-other">optional&amp; operator= (const optional&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>If <code>other</code> has a value, assigns it to the optional. Otherwise, calls <code>reset</code> on the optional and leaves it without a value. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional-operator-const-T-value">optional&amp; operator= (const T&amp; value);</dt>
+<dd>
+
+<p>Assigns <code>value</code> to the optional. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional-operator-optionalT-other">optional&amp; operator= (optional&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>If <code>other</code> has a value, assigns it to the optional by moving it. Otherwise, calls <code>reset</code> on the optional and leaves it without a value. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional-operator-T-value">optional&amp; operator= (T&amp;&amp; value);</dt>
+<dd>
+
+<p>Assigns <code>value</code> to the optional by moving it. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional1">~optional ();</dt>
+<dd>
+
+<p>Destroys the value associated to the optional, if it had any.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details2">Implementation details</h3>
+
+<p>Optionals are rather simple: They are implemented by using a union that supresses the constructor of the template type, and a flag that marks whether the optional has a value or not.</p>
+
+<p>Optionals are very useful when performing lookups in mapped containers, since they allow us to bypass the need of additional output parameters to determine if a search was successful in an atomic way.</p>
+
+<h2 id="Skip-lists">Skip lists</h2>
+
+<pre><code>    #include &lt;xrcu/skip_list.hpp&gt;</code></pre>
+
+<p>A skip list is an associative container that holds a sorted set of unique objects of a particular type. In addition to the <i>Key</i> type, skip lists are instantiated with a comparator type that allows them to determine ordering.</p>
+
+<p>In XRCU, skip lists meet the requirements for the C++ concept of <i>Container</i>, and <i>AssociativeContainer</i>.</p>
+
+<h3 id="Skip-list-API">Skip list API</h3>
+
+<p>Skip lists are templated types, defined in the following way:</p>
+
+<pre><code>    template &lt;class T, class Cmp = std::less&lt;T&gt; &gt;
+    struct skip_list
+      {
+        struct iterator
+          {
+          };
+
+        struct const_iterator
+          {
+          };
+      };</code></pre>
+
+<p>The template parameter <code>T</code> refers to the key type, whereas <code>Cmp</code> is the comparator type, which defaults to <code>std::less</code>. Under most circumstances, that is usually enough, but users may instantiate with any other type that defines the <code>operator()</code> which returns a boolean.</p>
+
+<p>As shown above, skip list has iterators, but they are non-const in all cases, for practicality reasons. Much like with stacks, skip list iterators are <i>forward</i> iterators, and an implicit <code>cs_guard</code>.</p>
+
+<p>The following describes the public interface for <code>skip_list&lt;T, Cmp&gt;</code></p>
+
+<dl>
+
+<dt id="skip_list-Cmp-c-Cmp-unsigned-int-depth">skip_list (Cmp c = Cmp (), unsigned int depth = ...);</dt>
+<dd>
+
+<p>Initializes the skip list with comparator <code>c</code>, which defaults to a default constructed value. Also takes a parameter indicating the maximum depth a skip list node may have, which defaults to an implementation-specified value. Users shouldn&#39;t need to change the latter, but it can be useful when tuning the application for performance. As a general rule, a higher value implies more memory usage, but better performance.</p>
+
+</dd>
+<dt id="template-class-Iter-skip_list-Iter-first-Iter-last-Cmp-c-Cmp-unsigned-int-depth">template &lt;class Iter&gt; skip_list (Iter first, Iter last, Cmp c = Cmp (), unsigned int depth = ...);</dt>
+<dd>
+
+<p>Initializes the skip list to the values in [<code>first</code>, <code>last</code>). The comparator and depth parameters are the same as explained above.</p>
+
+</dd>
+<dt id="skip_list-std::initializer_listT-lst-Cmp-c-Cmp-unsigned-int-depth">skip_list (std::initializer_list&lt;T&gt; lst, Cmp c = Cmp (), unsigned int depth = ...);</dt>
+<dd>
+
+<p>Initializes the skip list to the values in <code>lst</code>. The comparator and depth parameters are the same as explained above.</p>
+
+</dd>
+<dt id="skip_list-const-skip_listT-Cmp-other">skip_list (const skip_list&lt;T, Cmp&gt;&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes the skip list to hold the values in <code>other</code>.</p>
+
+</dd>
+<dt id="skip_list-skip_listT-Cmp-other">skip_list (skip_list&lt;T, Cmp&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move constructor. Takes ownership of the values in <code>other</code>.</p>
+
+</dd>
+<dt id="optionalT-find-const-T-key-const">optional&lt;T&gt; find (const T&amp; key) const;</dt>
+<dd>
+
+<p>Searches for an element equivalent to <code>key</code> in the skip list, and returns an optional with it as its value. If the key couldn&#39;t be found, the returned optional has no value.</p>
+
+</dd>
+<dt id="bool-contains-const-T-key-const">bool contains (const T&amp; key) const;</dt>
+<dd>
+
+<p>Returns true if <code>key</code> is present in the skip list.</p>
+
+</dd>
+<dt id="bool-insert-const-T-key-const">bool insert (const T&amp; key) const;</dt>
+<dd>
+
+<p>Inserts <code>key</code> in the skip list. Returns true if the key wasn&#39;t present previous to this call.</p>
+
+</dd>
+<dt id="bool-erase-const-T-key-const">bool erase (const T&amp; key) const;</dt>
+<dd>
+
+<p>Erases <code>key</code> from the skip list. Returns true if the key was present previous to this call.</p>
+
+</dd>
+<dt id="optionalT-remove-const-T-key">optional&lt;T&gt; remove (const T&amp; key);</dt>
+<dd>
+
+<p>Erases <code>key</code> from the skip list and returns an optional with that element as its value, if the key was present. Otherwise, the returned optional has no value.</p>
+
+</dd>
+<dt id="iterator-begin1">iterator begin ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cbegin-const1">const_iterator cbegin () const;</dt>
+<dd>
+
+<p>Returns an iterator to the first element of the skip list.</p>
+
+</dd>
+<dt id="iterator-end1">iterator end ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cend-const1">const_iterator cend () const;</dt>
+<dd>
+
+<p>Returns an iterator one past the last element of the skip list.</p>
+
+</dd>
+<dt id="size_t-size-const">size_t size () const;</dt>
+<dd>
+
+<p>Returns the current size of the skip list.</p>
+
+</dd>
+<dt id="size_t-max_size-const">size_t max_size () const;</dt>
+<dd>
+
+<p>Returns the maximum allowed size for a skip list.</p>
+
+</dd>
+<dt id="bool-empty-const1">bool empty () const;</dt>
+<dd>
+
+<p>Returns true if the skip list is empty (i.e: its size is 0).</p>
+
+</dd>
+<dt id="template-class-Iter-void-assign-Iter-first-Iter-last">template &lt;class Iter&gt; void assign (Iter first, Iter last);</dt>
+<dd>
+
+<p>Assigns to the skip list the elements in [<code>first</code>, <code>last</code>).</p>
+
+</dd>
+<dt id="void-assign-std::initializer_listT-lst1">void assign (std::initializer_list&lt;T&gt; lst);</dt>
+<dd>
+
+<p>Assigns to the skip list the elements in <code>lst</code>.</p>
+
+</dd>
+<dt id="skip_list-operator-const-skip_listT-Cmp-other">skip_list&amp; operator= (const skip_list&lt;T, Cmp&gt;&amp; other);</dt>
+<dd>
+
+<p>Assigns the elements in <code>other</code> to the skip list. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="skip_list-operator-skip_listT-Cmp-other">skip_list&amp; operator= (skip_list&lt;T, Cmp&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move assignment. Takes ownership of the elements in <code>other</code>. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="void-swap-skip_listT-Cmp-other">void swap (skip_list&lt;T, Cmp&gt;&amp; other);</dt>
+<dd>
+
+<p>Swaps the contents of the skip list with <code>other</code>, but only if <code>other</code> is a different object.</p>
+
+</dd>
+<dt id="void-clear1">void clear ();</dt>
+<dd>
+
+<p>Removes every element from the skip list.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details3">Implementation details</h3>
+
+<p>In XRCU, skip lists are implemented as described in any piece of literature that talks about them. Basically, every skip list of depth <i>D</i> has a head node that can be linked with up to other <i>D</i> nodes. When performing a lookup for an element, we start at the head node, and move horizontally until the current element is equal or greater. If it&#39;s equal, we the lookup succeeded. Otherwise, we move vertically to the next node, until we either find the element, or we exhausted every node.</p>
+
+<p>Insertions first perform a lookup, and if the search failed, we create a new node with the specified value as its key. The number of linked nodes it will have is determined in a semi-random way, but it must never exceed the maximum depth of the skip list. After the node is created, we try to atomically link it with its computed predecesors and successors (Returned in the same lookup call we did before). If we succeed, the node is considered part of the skip list; otherwise, we free it and retry.</p>
+
+<p>Erasing an element proceeds in a similar fashion, only we check that the lookup <i>did not</i> fail, and then atomically relink the node&#39;s predecessors with the node&#39;s own successors, thereby removing the key from the skip list.</p>
+
+<p>Skip lists mantain an atomic word to store the length. However, this is used slightly differently as one would think, because the lowest bit is used as an ad-hoc lock bit in order to serialize concurrent calls to <code>swap</code>.</p>
+
+<h2 id="Hash-tables">Hash tables</h2>
+
+<pre><code>    #include &lt;xrcu/hash_table.hpp&gt;</code></pre>
+
+<p>Hash tables are associative containers that map unique keys to values. Ordering is unspecified for both keys and values. In addition to the key and value types, hash tables are instantiated with a hashing type and an equality type; callables that compute a <i>hash value</i> for a given key, and one that tests for equality, given two keys, respectively.</p>
+
+<p>Additionally, hash tables mantain a <i>load factor</i> that determines when a full rehash is performed. A rehash implies moving all the key-value pairs into a new location to reduce the overhead of most operations.</p>
+
+<p>In XRCU, hash tables meet the requirements for the C++ concept of <i>Container</i> and <i>UnorderedAssociativeContainer</i>.</p>
+
+<h3 id="Hash-table-API">Hash table API</h3>
+
+<p>As mentioned above, hash tables are template types, defined like this:</p>
+
+<pre><code>    template &lt;class Key, class Val,
+              class Equal = std::equal&lt;Key&gt;,
+              class Hash = std::hash&lt;Key&gt; &gt;
+    struct hash_table
+      {
+        struct iterator
+          {
+          };
+
+        struct const_iterator
+          {
+          };
+      };</code></pre>
+
+<p>The template parameters should be pretty self explanatory: They refer to the key, value, equality and hashing types, in that order. The <code>Equal</code> type has to operate on two keys and return a boolean value that determines their equality, whereas the <code>Hash</code> type has to operate on keys and return unsigned integers. Both are allowed to throw exceptions, although it is not really wise to do so.</p>
+
+<p>Much like with skip lists, hash table iterators are always constant, and also an implicit <code>cs_guard</code>.</p>
+
+<p>The following describes public interface for hash tables:</p>
+
+<dl>
+
+<dt id="hash_table-size_t-size-0-float-lf-0.85-Equal-e-Equal-Hash-h-Hash">hash_table (size_t size = 0, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())</dt>
+<dd>
+
+<p>Initializes the hash table to hold <code>size</code> elements, with a load factor of <code>lf</code>, using the equality predicate <code>e</code> and the hasher <code>h</code>. The load factor must be in the range [0.4, 0.9]; if it&#39;s not, then it will silently be set to the default of 0.85.</p>
+
+</dd>
+<dt id="template-class-It-hash_table-It-first-It-last-float-lf-0.85-Equal-e-Equal-Hash-h-Hash">template &lt;class It&gt; hash_table (It first, It last, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())</dt>
+<dd>
+
+<p>Initializes the hash table with the values between (<code>first</code>, <code>last</code>]. The elements in that range must have two public members defined: <code>first</code> and <code>second</code>, referring to the key and value of each element, respectively, and in a similar fashion to what <code>std::pair</code> does. The other parameters work as with the previous constructor.</p>
+
+</dd>
+<dt id="hash_table-std::initializer_liststd::pairKey-Val-float-lf-0.85-Equal-e-Equal-Hash-h-Hash">hash_table (std::initializer_list&lt;std::pair&lt;Key, Val&gt; &gt;, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())</dt>
+<dd>
+
+<p>Initializes the hash table with the values in <code>lst</code>. The rest of the parameters work as with the previous constructors.</p>
+
+</dd>
+<dt id="hash_table-const-hash_tableKey-Val-Hash-Equal-other">hash_table (const hash_table&lt;Key, Val, Hash, Equal&gt;&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes the hash table with the values in <code>other</code>.</p>
+
+</dd>
+<dt id="hash_table-hash_tableKey-Val-Hash-Equal-other">hash_table (hash_table&lt;Key, Val, Hash, Equal&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move constructor. Takes ownership of the values in <code>other</code>.</p>
+
+</dd>
+<dt id="size_t-size-const1">size_t size () const;</dt>
+<dd>
+
+<p>Returns the hash table size.</p>
+
+</dd>
+<dt id="size_t-max_size-const1">size_t max_size () const;</dt>
+<dd>
+
+<p>Returns the maximum allowed size for a hash table.</p>
+
+</dd>
+<dt id="bool-empty-const2">bool empty () const;</dt>
+<dd>
+
+<p>Returns true if the hash table is empty.</p>
+
+</dd>
+<dt id="optionalVal-find-const-Key-key-const">optional&lt;Val&gt; find (const Key&amp; key) const;</dt>
+<dd>
+
+</dd>
+<dt id="Val-find-const-Key-key-const-Val-defl-const">Val find (const Key&amp; key, const Val&amp; defl) const;</dt>
+<dd>
+
+<p>Look for <code>key</code> in the hash table. If it&#39;s found, returns the value associated to it. If it&#39;s not found, returns an empty optional in the first version, or <code>defl</code> in the second one.</p>
+
+</dd>
+<dt id="bool-contains-const-Key-key-const">bool contains (const Key&amp; key) const;</dt>
+<dd>
+
+<p>Returns true if the key is present in the hash table.</p>
+
+</dd>
+<dt id="bool-insert-const-Key-key-const-Val-val">bool insert (const Key&amp; key, const Val&amp; val);</dt>
+<dd>
+
+<p>Associates <code>key</code> with <code>val</code> in the hash table. Returns true if the value was not present. Otherwise, the former value is replaced.</p>
+
+</dd>
+<dt id="template-class-Fn-class-...Args-bool-update-const-Key-key-Fn-f-Args...-args">template &lt;class Fn, class ...Args&gt; bool update (const Key&amp; key, Fn f, Args... args);</dt>
+<dd>
+
+<p>Updates the value associated to <code>key</code> by calling the <code>f</code> with it and the rest of the arguments. In other words, if <code>val</code> is the value associated to key, calls <code>f (val, args...)</code> and updates the value with the result. If no value was present for that key, the function is called with a default constructed value instead (as if by calling <code>Val ()</code>).</p>
+
+<p>Note that the function takes a <i>reference</i> to the value, and so it&#39;s possible to modify it in place. Additionally, if the function returns the very same object that was passed (i.e: the same reference that it received), there won&#39;t be any updates made. The function can also receive and return a freshly made object, and <code>update</code> will work the same. The function may be called more than once if the atomic updates fail.</p>
+
+<p>Returns true if <code>key</code> was present before the call.</p>
+
+</dd>
+<dt id="bool-erase-const-Key-key">bool erase (const Key&amp; key);</dt>
+<dd>
+
+<p>Erases <code>key</code> from the hash table. Returns true if <code>key</code> was present before the call.</p>
+
+</dd>
+<dt id="optionalVal-remove-const-Key-key">optional&lt;Val&gt; remove (const Key&amp; key);</dt>
+<dd>
+
+<p>Removes <code>key</code> from the hash table and returns the value that was associated to if, if it was present.</p>
+
+</dd>
+<dt id="void-clear2">void clear ();</dt>
+<dd>
+
+<p>Removes every element from the hash table.</p>
+
+</dd>
+<dt id="template-class-Iter-void-assign-Iter-first-Iter-last1">template &lt;class Iter&gt; void assign (Iter first, Iter last);</dt>
+<dd>
+
+<p>Assigns the elements in [<code>first</code>, <code>last</code>) to the hash table. The same restrictions as the range constructor apply here.</p>
+
+</dd>
+<dt id="void-assign-std::initializer_liststd::pairKey-Val-lst">void assign (std::initializer_list&lt;std::pair&lt;Key, Val&gt;&gt; lst);</dt>
+<dd>
+
+<p>Assigns the elements in <code>lst</code> to the hash table.</p>
+
+</dd>
+<dt id="hash_tableKey-Val-operator-const-hash_tableKey-Val-other">hash_table&lt;Key, Val&gt;&amp; operator= (const hash_table&lt;Key, Val&gt;&amp; other);</dt>
+<dd>
+
+<p>Assigns the elements in <code>other</code> to the hash table. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="hash_tableKey-Val-operator-hash_tableKey-Val-other">hash_table&lt;Key, Val&gt;&amp; operator= (hash_table&lt;Key, Val&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move assignment. Takes ownership of the elements in <code>other</code>. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="void-swap-hash_tableKey-Val-other">void swap (hash_table&lt;Key, Val&gt;&amp; other);</dt>
+<dd>
+
+<p>Swaps the contents of the hash table with <code>other</code>, but only if <code>other</code> is a different object.</p>
+
+</dd>
+<dt id="iterator-begin2">iterator begin ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cbegin-const2">const_iterator cbegin () const;</dt>
+<dd>
+
+<p>Returns an iterator to the first element of the hash table.</p>
+
+</dd>
+<dt id="iterator-end2">iterator end ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cend-const2">const_iterator cend () const;</dt>
+<dd>
+
+<p>Returns an iterator one past the last element of the hash table.</p>
+
+</dd>
+<dt id="iterator::iterator1">iterator::iterator ();</dt>
+<dd>
+
+<p>Default constructor for hash table iterators. Leaves the object in an invalid state. Dereferencing or incrementing such an iterator has undefined behavior.</p>
+
+</dd>
+<dt id="iterator::iterator-const-iterator-other1">iterator::iterator (const iterator&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes the iterator to be equal to <code>other</code>.</p>
+
+</dd>
+<dt id="Key-iterator::key-const">Key iterator::key () const;</dt>
+<dd>
+
+<p>Returns the key for the iterator.</p>
+
+</dd>
+<dt id="Val-iterator::value-const">Val iterator::value () const;</dt>
+<dd>
+
+<p>Returns the value for the iterator.</p>
+
+</dd>
+<dt id="std::pairKey-Val-iterator::operator-const">std::pair&lt;Key, Val&gt; iterator::operator* () const;</dt>
+<dd>
+
+<p>Returns an <code>std::pair</code> constructed with the key and value of the iterator.</p>
+
+</dd>
+<dt id="iterator-iterator::operator1">iterator&amp; iterator::operator++ ();</dt>
+<dd>
+
+<p>Pre-increment operator. Moves the iterator forward and returns it. If the iterator was at the end, the results are undefined.</p>
+
+</dd>
+<dt id="iterator-iterator::operator-int1">iterator iterator::operator++ (int);</dt>
+<dd>
+
+<p>Post-increment operator. Moves the iterator forward, and returns an iterator equal to what it was before incrementing. If the iterator was at the end, the results are undefined.</p>
+
+</dd>
+<dt id="bool-iterator::operator-const-iterator-other2">bool iterator::operator== (const iterator&amp; other);</dt>
+<dd>
+
+</dd>
+<dt id="bool-iterator::operator-const-iterator-other3">bool iterator::operator!= (const iterator&amp; other);</dt>
+<dd>
+
+<p>Test for iterator (in)equality.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details4">Implementation details</h3>
+
+<p>Hash tables are somewhat complex, because the atomicity requirements force us to do some rather convoluted things. To start off, a hash table is essentially a vector of consecutive <code>key</code> and <code>value</code> pairs, with some special values indicating <code>free</code> and <code>deleted</code> entries. However, since we can only operate atomically on integers, we wrap any other type that is not integral into a dynamically allocated pointer. This is done based on the template instantiation and is figured out at compile time.</p>
+
+<p>When a lookup is performed, the passed <code>key</code> is hashed with the table&#39;s own internal hasher and a hash code is computed. Using this code, we produce an index into the vector and then we iterate over it, looking for a key that matches, or until we find a free entry, in which case the lookup fails.</p>
+
+<p>Insertions are a bit more complicated. We start by performing a lookup, as described above, and then determine what to do based on the result: If the lookup came up empty, then we need to insert both the key <i>and</i> the value; otherwise, we only need to update the value.</p>
+
+<p>If we need to insert the key as well, first we decrement an internal counter that keeps track of how many additional elements we can insert before a rehash is triggered. If the counter has already reached zero, then we have to rehash before inserting the key and value. If no rehash is needed, or after it&#39;s done, both the key and value are updated atomically (Some platforms allow us to do it in a single step, otherwise the operations are done sequentially).</p>
+
+<p>At this point, we have to pause to make a sort of confession: Hash tables as implemented in XRCU are not <i>entirely</i> lock free, because rehashing actually takes an internal lock (I know, you&#39;re crushed). This not because of any intrinsical limitation, but rather, to make things easier. Since rehashes are probably the least common of the operations, we figured it wasn&#39;t that big of a deal anyways.</p>
+
+<p>Going back to rehashes, these are the most expensive operations. As mentioned, they start off by acquiring an internal lock, and then they iterate over the full vector, marking the <code>value</code> indexes with a special bit that signals that the table is being rehashed. When this bit is set, insertions and erasures are forbidden (They both check for this bit before proceeding).</p>
+
+<p>Erasures are pretty simple in comparison. They obviously perform a lookup on the key, and if it didn&#39;t come up empty, they atomically swap out the value for the special <code>empty</code> constant. Afterwards, they can mutate the key entry without atomicity (Because erased entries cannot be reused).</p>
+
+<h1 id="AUTHORS">AUTHORS</h1>
+
+<p>Agustina Arzille (avarzille@riseup.net) and Luciano Lo Giudice (lmlogiudice@gmail.com)</p>
+
+
+</body>
+
+</html>
+
+

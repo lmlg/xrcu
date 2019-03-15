@@ -38,21 +38,23 @@ given the performance benefits they bring (see for example, many kernels).
 =head1 ABOUT RCU
 
 There is a big problem with using lock free algorithms in programming languages
-that feature manual memory management, and it has to do with reclamation. Since
-lock freedom implies that multiple threads may operate on a given structure
-concurrently, it is possible to find ourselves in a situation in which a thread
-is reading some data, while another one is modifying or deleting that same
-piece of data, potentially freeing the memory associated to it.
+that feature manual memory management, and it has to do with memory reclamation.
+Since lock freedom implies that multiple threads may operate on a given
+structure concurrently, it is possible to find ourselves in a situation in which
+a thread is reading some data, while another one is deleting that same piece of
+data, potentially freeing the memory associated to it.
 
-As such, lock freedom isn't feasible in languages like C and C++. We need an
-additional subsystem that allows us to synchronize reclamation without using
-heavyweight methods like mutexes (we are developing a lock-free library, after
-all).
+As such, lock freedom needs an additional twist in languages like C and C++.
+We need an additional subsystem that allows us to synchronize reclamation
+without using heavyweight methods like mutexes (we are developing a lock-free
+library, after all).
 
 This is where RCU comes in. RCU, short for read-copy-update, is a mechanism
 that allows multiple threads to I<read> from memory, while postponing
 reclamations until it is safe to do so (i.e: until no readers are operating
-on said memory).
+on said memory). RCU typically assumes that updates are performed using atomic
+instructions, and isn't concerned with them (At least, that's the case in this
+library).
 
 There are several different ways to implement RCU, and the one chosen in this
 library will be detailed later. For now, it's important to point out that RCU
@@ -62,8 +64,8 @@ reads are more frequent than modifications.
 
 It should be noted that RCU is not the only way to manage memory reclamations
 in a multi-threaded environment, but as its name implies, XRCU chose it because
-it was deemed the best option. Since lock-free structures rely on RCU to work
-properly, we'll describe the RCU interface that this library exposes first.
+it was deemed the best option. Since our lock-free structures rely on RCU to
+work properly, we'll describe the RCU interface that this library exposes first.
 
 =head2 API design
 
@@ -106,9 +108,9 @@ of RCU, however.
 Naturally, RCU critical sections don't prevent I<all> memory reclamation,
 they only affect the destruction of objects that are derived from a type
 defined in XRCU, called C<finalizable>. If you wish to use the RCU API, all
-you need to do is make your types derive from C<finalizable> and you'll be set.
-Any other memory management function, like C<malloc> and friends is unaffected
-by RCU as implemented in this library.
+you need to do is make your types derive from C<finalizable> and use its API,
+and you'll be set. Any other memory management function, like C<malloc> and
+friends is unaffected by RCU as implemented in this library.
 
 Critical sections are managed through the following API:
 
@@ -133,14 +135,10 @@ Returns true if the calling thread is in a critical section; false otherwise.
 
 =item bool sync (void);
 
-Waits until all threads are outside a critical section, and returns true
-afterwards. If a deadlock is detected (because the calling thread is in a
+Waits until all threads are outside pre-existing critical sections, and returns
+true afterwards. If a deadlock is detected (because the calling thread is in a
 critical section, for example), this function returns false immediately
 without waiting.
-
-Note that this call is affected by I<ongoing> critical sections. If a thread
-enters a new one after another thread has already called C<sync>, the blocked
-thread will not wait for it.
 
 =item struct cs_guard
 
@@ -195,6 +193,8 @@ Schedule all the calling thread's accumulated C<finalizable> objects for
 reclamation immediately. Returns true if successful, false if a deadlock was
 detected. Note that this call may block until all threads are outside a
 critical section (Much as a call to C<sync> would).
+
+Once a thread exits, an implicit call to this function is made.
 
 =back
 
@@ -361,7 +361,7 @@ Removes every element from the stack.
 =item template <class T1, class T2> void assign (T1 x, T2 y);
 
 Assigns to the stack the elements described by (x, y). They could be an
-iterator range, o a pair of (integer, value), as is the case with the stack's
+iterator range, or a pair of (integer, value), as is the case with the stack's
 constructor.
 
 =item void assign (std::initializer_list<T> lst);
@@ -475,7 +475,7 @@ And its public interface is the following:
 
 =item optional ();
 
-Default constructor. Initializes the optional I<without> a value.
+Default constructor. Initializes the optional without a value.
 
 =item optional (const T& value);
 
@@ -720,7 +720,7 @@ node's own successors, thereby removing the key from the skip list.
 
 Skip lists mantain an atomic word to store the length. However, this is used
 slightly differently as one would think, because the lowest bit is used as an
-ad-hoc lock bit in order to serialize concurrent calls to C<swap> and C<clear>.
+ad-hoc lock bit in order to serialize concurrent calls to C<swap>.
 
 =head2 Hash tables
 
@@ -976,3 +976,7 @@ Erasures are pretty simple in comparison. They obviously perform a lookup on
 the key, and if it didn't come up empty, they atomically swap out the value
 for the special C<empty> constant. Afterwards, they can mutate the key entry
 without atomicity (Because erased entries cannot be reused).
+
+=head1 AUTHORS
+
+Agustina Arzille (avarzille@riseup.net) and Luciano Lo Giudice (lmlogiudice@gmail.com)

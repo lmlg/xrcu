@@ -618,7 +618,6 @@ struct skip_list
   void clear ()
     {
       auto xroot = this->_Make_root ();
-      this->_Lock_root ();
       auto prev = this->head.exchange (xroot, std::memory_order_release);
       this->_Fini_root<> (prev);
     }
