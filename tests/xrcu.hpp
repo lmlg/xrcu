@@ -21,7 +21,6 @@ struct tst_fin : public xrcu::finalizable
 
 void test_xrcu ()
 {
-
   xrcu::enter_cs ();
   ASSERT (xrcu::in_cs ());
   xrcu::exit_cs ();
