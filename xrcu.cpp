@@ -1,4 +1,5 @@
 #include "xrcu.hpp"
+#include "version.hpp"
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -362,6 +363,11 @@ atfork atfork_data ()
   ret.parent = atfork_parent;
   ret.child = atfork_child;
   return (ret);
+}
+
+void library_version (int& major, int& minor)
+{
+  major = MAJOR, minor = MINOR;
 }
 
 } // namespace rcu

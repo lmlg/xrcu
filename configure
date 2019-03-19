@@ -208,6 +208,12 @@ case $maxfins in
   *) ;;
 esac
 
+# generate version file
+version=$(cat $srcdir/VERSION)
+major=$(echo $version | cut -d. -f1)
+minor=$(echo $version | cut -d. -f2)
+echo "const int MAJOR = $major; const int MINOR = $minor;" > $srcdir/version.hpp
+
 printf "creating config.mak... "
 
 cmdline=$(quote "$0")

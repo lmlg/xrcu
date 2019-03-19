@@ -89,6 +89,10 @@ Finally, it should be mentioned that XRCU requires no initializatio or cleanup
 at a library level to function properly. Once the library is installed, you
 can freely use its API without any further action needed.
 
+Note that XRCU may expose more functions or types that are specified in this
+document. This is usually done to avoid code bloat. Anything that isn't
+included in this file should be treated as private and subject to change.
+
 =head2 RCU API
 
   #include <xrcu/xrcu.hpp>
@@ -195,6 +199,35 @@ detected. Note that this call may block until all threads are outside a
 critical section (Much as a call to C<sync> would).
 
 Once a thread exits, an implicit call to this function is made.
+
+=back
+
+=head3 Miscellaneous functions
+
+These functions don't really belong anywhere else, but they are included in
+this file for convenience's sake:
+
+    struct atfork
+      {
+        void (*prepare) (void);
+        void (*parent) (void);
+        void (*child) (void);
+      };
+
+=over 4
+
+=item atfork atfork_data ();
+
+Returns a structure that implements the needed callbacks for XRCU to mantain a
+consistent state across calls to C<fork>. The returned callbacks should be
+passed to C<pthread_atfork> (or similar). XRCU itself does not install these
+callbacks, because most calls to C<fork> are followed immediately after C<exec>,
+and because multi-threaded programs that call C<fork> are rare.
+
+=item void library_version (int& major, int& minor);
+
+Returns the library version as a pair of C<major>, C<minor>. Useful to assert
+that a program is using the correct version (at runtime).
 
 =back
 
