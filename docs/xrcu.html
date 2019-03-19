@@ -2,9 +2,9 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title>XRCU Documentation</title>
+<title>XRCU documentation</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-<link rev="made" href="mailto:" />
+<link rev="made" href="mailto:root@localhost" />
 <style>
 body {
    color: black;
@@ -165,6 +165,7 @@ td {
         <ul>
           <li><a href="#RCU-critical-section-management">RCU critical section management</a></li>
           <li><a href="#RCU-finalizable-objects">RCU finalizable objects</a></li>
+          <li><a href="#Miscellaneous-functions">Miscellaneous functions</a></li>
           <li><a href="#Implementation-details">Implementation details</a></li>
         </ul>
       </li>
@@ -194,6 +195,7 @@ td {
       </li>
     </ul>
   </li>
+  <li><a href="#BUGS">BUGS</a></li>
   <li><a href="#AUTHORS">AUTHORS</a></li>
 </ul>
 
@@ -236,6 +238,8 @@ td {
 <p>XRCU uses some thread-specific data in order to function properly. There may be some systems that have issues when dynamically loading libraries that use thread-specific data (I believe Windows Vista was among them). Consult with your working environment&#39;s manual to verify that if you notice any problem.</p>
 
 <p>Finally, it should be mentioned that XRCU requires no initializatio or cleanup at a library level to function properly. Once the library is installed, you can freely use its API without any further action needed.</p>
+
+<p>Note that XRCU may expose more functions or types that are specified in this document. This is usually done to avoid code bloat. Anything that isn&#39;t included in this file should be treated as private and subject to change.</p>
 
 <h2 id="RCU-API">RCU API</h2>
 
@@ -315,6 +319,33 @@ td {
 <p>Schedule all the calling thread&#39;s accumulated <code>finalizable</code> objects for reclamation immediately. Returns true if successful, false if a deadlock was detected. Note that this call may block until all threads are outside a critical section (Much as a call to <code>sync</code> would).</p>
 
 <p>Once a thread exits, an implicit call to this function is made.</p>
+
+</dd>
+</dl>
+
+<h3 id="Miscellaneous-functions">Miscellaneous functions</h3>
+
+<p>These functions don&#39;t really belong anywhere else, but they are included in this file for convenience&#39;s sake:</p>
+
+<pre><code>    struct atfork
+      {
+        void (*prepare) (void);
+        void (*parent) (void);
+        void (*child) (void);
+      };</code></pre>
+
+<dl>
+
+<dt id="atfork-atfork_data">atfork atfork_data ();</dt>
+<dd>
+
+<p>Returns a structure that implements the needed callbacks for XRCU to mantain a consistent state across calls to <code>fork</code>. The returned callbacks should be passed to <code>pthread_atfork</code> (or similar). XRCU itself does not install these callbacks, because most calls to <code>fork</code> are followed immediately after <code>exec</code>, and because multi-threaded programs that call <code>fork</code> are rare.</p>
+
+</dd>
+<dt id="void-library_version-int-major-int-minor">void library_version (int&amp; major, int&amp; minor);</dt>
+<dd>
+
+<p>Returns the library version as a pair of <code>major</code>, <code>minor</code>. Useful to assert that a program is using the correct version (at runtime).</p>
 
 </dd>
 </dl>
@@ -1001,7 +1032,7 @@ td {
 <dt id="template-class-Fn-class-...Args-bool-update-const-Key-key-Fn-f-Args...-args">template &lt;class Fn, class ...Args&gt; bool update (const Key&amp; key, Fn f, Args... args);</dt>
 <dd>
 
-<p>Updates the value associated to <code>key</code> by calling the <code>f</code> with it and the rest of the arguments. In other words, if <code>val</code> is the value associated to key, calls <code>f (val, args...)</code> and updates the value with the result. If no value was present for that key, the function is called with a default constructed value instead (as if by calling <code>Val ()</code>).</p>
+<p>Updates the value associated to <code>key</code> by calling <code>f</code> with it and the rest of the arguments. In other words, if <code>val</code> is the value associated to key, calls <code>f (val, args...)</code> and updates the value with the result. If no value was present for that key, the function is called with a default constructed value instead (as if by calling <code>Val ()</code>).</p>
 
 <p>Note that the function takes a <i>reference</i> to the value, and so it&#39;s possible to modify it in place. Additionally, if the function returns the very same object that was passed (i.e: the same reference that it received), there won&#39;t be any updates made. The function can also receive and return a freshly made object, and <code>update</code> will work the same. The function may be called more than once if the atomic updates fail.</p>
 
@@ -1145,6 +1176,10 @@ td {
 <p>Going back to rehashes, these are the most expensive operations. As mentioned, they start off by acquiring an internal lock, and then they iterate over the full vector, marking the <code>value</code> indexes with a special bit that signals that the table is being rehashed. When this bit is set, insertions and erasures are forbidden (They both check for this bit before proceeding).</p>
 
 <p>Erasures are pretty simple in comparison. They obviously perform a lookup on the key, and if it didn&#39;t come up empty, they atomically swap out the value for the special <code>empty</code> constant. Afterwards, they can mutate the key entry without atomicity (Because erased entries cannot be reused).</p>
+
+<h1 id="BUGS">BUGS</h1>
+
+<p>All implemented containers use standard operators <code>new</code> and <code>delete</code> to perform memory (de)allocations. There&#39;s no way to specify custom allocators yet, although it&#39;s planned in the future.</p>
 
 <h1 id="AUTHORS">AUTHORS</h1>
 
