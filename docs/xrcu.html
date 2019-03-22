@@ -1032,11 +1032,11 @@ td {
 <dt id="template-class-Fn-class-...Args-bool-update-const-Key-key-Fn-f-Args...-args">template &lt;class Fn, class ...Args&gt; bool update (const Key&amp; key, Fn f, Args... args);</dt>
 <dd>
 
-<p>Updates the value associated to <code>key</code> by calling <code>f</code> with it and the rest of the arguments. In other words, if <code>val</code> is the value associated to key, calls <code>f (val, args...)</code> and updates the value with the result. If no value was present for that key, the function is called with a default constructed value instead (as if by calling <code>Val ()</code>).</p>
+<p>Updates the value associated to <code>key</code> by calling <code>f</code> with it and the rest of the arguments. In other words, if <code>val</code> is the value associated to <code>key</code>, calls <code>f (val, args...)</code> and updates the value with the result. If no value was present for <code>key</code>, the function is called with a default constructed value instead (as if by calling <code>Val ()</code>).</p>
 
-<p>Note that the function takes a <i>reference</i> to the value, and so it&#39;s possible to modify it in place. Additionally, if the function returns the very same object that was passed (i.e: the same reference that it received), there won&#39;t be any updates made. The function can also receive and return a freshly made object, and <code>update</code> will work the same. The function may be called more than once if the atomic updates fail.</p>
+<p>Note that the function takes a <i>reference</i> to the value, and so it&#39;s possible to modify it in place. Additionally, if the function returns the very same object that was passed (i.e: the same reference that it received), there won&#39;t be any updates made. The function can also return a freshly made object, and <code>update</code> will work the same. The function may be called more than once if the atomic updates fail.</p>
 
-<p>Returns true if <code>key</code> was present before the call.</p>
+<p>Returns true if <code>key</code> was present in the hash table before the call.</p>
 
 </dd>
 <dt id="bool-erase-const-Key-key">bool erase (const Key&amp; key);</dt>

@@ -863,19 +863,19 @@ not present. Otherwise, the former value is replaced.
 =item template <class Fn, class ...Args> bool update (const Key& key, Fn f, Args... args);
 
 Updates the value associated to C<key> by calling C<f> with it and the rest of
-the arguments. In other words, if C<val> is the value associated to key, calls
-C<f (val, args...)> and updates the value with the result. If no value was
-present for that key, the function is called with a default constructed value
+the arguments. In other words, if C<val> is the value associated to C<key>,
+calls C<f (val, args...)> and updates the value with the result. If no value was
+present for C<key>, the function is called with a default constructed value
 instead (as if by calling C<Val ()>).
 
 Note that the function takes a I<reference> to the value, and so it's possible
 to modify it in place. Additionally, if the function returns the very same
 object that was passed (i.e: the same reference that it received), there won't
-be any updates made. The function can also receive and return a freshly made
-object, and C<update> will work the same. The function may be called more than
-once if the atomic updates fail.
+be any updates made. The function can also return a freshly made object, and
+C<update> will work the same. The function may be called more than once if the
+atomic updates fail.
 
-Returns true if C<key> was present before the call.
+Returns true if C<key> was present in the hash table before the call.
 
 =item bool erase (const Key& key);
 

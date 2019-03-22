@@ -344,7 +344,6 @@ atfork_child ()
 {
   atfork_parent ();
   // Reset the registry
-  global_reg.counter.store (1, std::memory_order_relaxed);
   global_reg.root.init_head ();
 
   auto self = &tldata;
@@ -353,7 +352,6 @@ atfork_child ()
 
   // Manually add ourselves to the registry without locking.
   self->add (&global_reg.root);
-  self->init = true;
 }
 
 atfork atfork_data ()
