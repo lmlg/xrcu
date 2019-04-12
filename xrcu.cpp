@@ -159,12 +159,10 @@ struct tl_data : public td_link
 
       if (++this->n_fins < MAX_FINS)
         ;
-      else if (this->in_cs ())
-        /* Can't reclaim memory since we are in a critical section.
+      else if (!this->flush_all ())
+        /* Couldn't reclaim memory since we are in a critical section.
          * Set the flag to do it ASAP. */
         this->must_flush = true;
-      else
-        this->flush_all ();
     }
 
   ~tl_data ()
