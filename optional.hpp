@@ -1,7 +1,6 @@
 #ifndef __XRCU_OPTIONAL_HPP__
 #define __XRCU_OPTIONAL_HPP__   1
 
-#include <stdexcept>
 #include <utility>
 
 namespace xrcu
@@ -117,9 +116,12 @@ struct optional
 
   optional<T>& operator= (optional<T>&& right)
     {
-      this->reset ();
-      if (right.valid)
+      if (!right.valid)
+        this->reset ();
+      else if (!this->valid)
         this->_Init (std::forward<T&&> (*right));
+      else
+        **this = std::forward<T&&> (*right);
 
       return (*this);
     }
@@ -136,8 +138,11 @@ struct optional
 
   optional<T>& operator= (T&& value)
     {
-      this->reset ();
-      this->_Init (std::forward<T&&> (value));
+      if (!this->valid)
+        this->_Init (std::forward<T&&> (value));
+      else
+        **this = std::forward<T&&> (value);
+
       return (*this);
     }
 

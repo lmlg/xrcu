@@ -92,6 +92,9 @@ unsigned int ctz (unsigned int val)
 // Generate a pseudo-random number (thread-safe).
 extern unsigned int xrand ();
 
+// Get the library version.
+extern void library_version (int& major, int& minor);
+
 } // namespace xrcu
 
 #endif
