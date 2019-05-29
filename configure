@@ -78,9 +78,6 @@ tryflag () {
 CXXFLAGS_EXTRA=
 CXXFLAGS_AUTO=
 CXXFLAGS_TRY=
-CXX_PROG=
-LDFLAGS_AUTO=
-LDFLAGS_TRY=
 srcdir=
 prefix=/usr/local
 libdir='$(prefix)/lib'
@@ -208,6 +205,12 @@ case $maxfins in
   *) ;;
 esac
 
+# generate version file
+version=$(cat $srcdir/VERSION)
+major=$(echo $version | cut -d. -f1)
+minor=$(echo $version | cut -d. -f2)
+echo "const int MAJOR = $major; const int MINOR = $minor;" > $srcdir/version.hpp
+
 printf "creating config.mak... "
 
 cmdline=$(quote "$0")
@@ -228,7 +231,6 @@ CXXFLAGS = $CXXFLAGS -DXRCU_MAX_FINS=$maxfins
 CXXFLAGS_AUTO = $CXXFLAGS_AUTO
 CXXFLAGS_EXTRA = $CXXFLAGS_EXTRA
 LDFLAGS = $LDFLAGS
-LDFLAGS_AUTO = $LDFLAGS_AUTO
 CROSS_COMPILE = $CROSS_COMPILE
 EOF
 test "x$static" = xno && echo "STATIC_LIBS ="

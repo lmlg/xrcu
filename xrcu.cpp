@@ -1,4 +1,5 @@
 #include "xrcu.hpp"
+#include "version.hpp"
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -158,12 +159,10 @@ struct tl_data : public td_link
 
       if (++this->n_fins < MAX_FINS)
         ;
-      else if (this->in_cs ())
-        /* Can't reclaim memory since we are in a critical section.
+      else if (!this->flush_all ())
+        /* Couldn't reclaim memory since we are in a critical section.
          * Set the flag to do it ASAP. */
         this->must_flush = true;
-      else
-        this->flush_all ();
     }
 
   ~tl_data ()
@@ -343,7 +342,6 @@ atfork_child ()
 {
   atfork_parent ();
   // Reset the registry
-  global_reg.counter.store (1, std::memory_order_relaxed);
   global_reg.root.init_head ();
 
   auto self = &tldata;
@@ -352,7 +350,6 @@ atfork_child ()
 
   // Manually add ourselves to the registry without locking.
   self->add (&global_reg.root);
-  self->init = true;
 }
 
 atfork atfork_data ()
@@ -362,6 +359,11 @@ atfork atfork_data ()
   ret.parent = atfork_parent;
   ret.child = atfork_child;
   return (ret);
+}
+
+void library_version (int& major, int& minor)
+{
+  major = MAJOR, minor = MINOR;
 }
 
 } // namespace rcu
