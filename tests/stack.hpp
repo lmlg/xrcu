@@ -14,6 +14,7 @@ void test_single_threaded ()
   {
     stack_t stk;
     ASSERT (stk.empty ());
+    ASSERT (!stk.top().has_value ());
   }
 
   {
@@ -35,7 +36,7 @@ void test_single_threaded ()
   for (int i = 0; i < NELEM; ++i)
     stk.push (mkstr (i));
 
-  ASSERT (stk.top () == mkstr (NELEM - 1));
+  ASSERT (*stk.top() == mkstr (NELEM - 1));
 
   stack_t s2;
   stk.swap (s2);

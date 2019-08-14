@@ -262,6 +262,117 @@ The overhead associated to C<sync> is the main reason why critical sections
 should be short, and also why C<finalizable> objects are accumulated instead of
 being reclaimed right away.
 
+=head2 Interlude: optionals
+
+    #include <xrcu/optional.hpp>
+
+Before moving on to the topic of containers, we need to take a look at an
+auxiliary structure implemented to make things easier and more convenient
+for users. This is the C<optional> type.
+
+An optional is a template type that can hold either an object of type I<T>, or
+be in an uninitialized state. In other words, the value may or may not be
+present. Unlike the usage of a pointer which may be null, an C<optional> never
+performs dynamic memory allocation, as the space required to hold the value is
+always there, even if it's not being used.
+
+Optional types have been standardized in C++17, and are present in many other
+libraries as well. However, since XRCU aims to work with the base minimum of
+C++11 compliant compilers, and because it's designed not to depend on other
+libraries or frameworks, it contains its own (lightweight) implementation.
+
+=head3 Optional API
+
+An optional is defined as such:
+
+    template <class T>
+    struct optional
+      {
+      };
+
+And its public interface is the following:
+
+=over 4
+
+=item optional ();
+
+Default constructor. Initializes the optional without a value.
+
+=item optional (const T& value);
+
+Initializes the optional to contain C<value>.
+
+=item optional (const optional<T>& other);
+
+Copy constructor. If C<other> has a value, then it initializes the optional to
+contain that same value. Otherwise, the optional will contain no value.
+
+=item optional (T&& value);
+
+Move constructor. Initializes the optional by taking ownership of C<value>.
+
+=item optional (optional<T>&& other);
+
+Move constructor. If C<other> has a value, then the optional is initialized
+by taken ownership of it. Otherwise, the optional will have no value.
+
+=item T& operator* ();
+
+=item const T& operator* () const;
+
+Returns a (possibly const) reference to the optional's value. The results are
+undefined if the optional does not contain one.
+
+=item T* operator-> ();
+
+=item const T* operator-> () const;
+
+Returns a (possibly const) pointer to the optional's value. The results are
+undefined if the optional does not contain one.
+
+=item bool has_value () const;
+
+Returns true if the optional has a value.
+
+=item void reset () const;
+
+If the optional contains a value, call its destructor and make the optional
+contain no value afterwards. Otherwise, there are no effects.
+
+=item optional& operator= (const optional<T>& other);
+
+If C<other> has a value, assigns it to the optional. Otherwise, calls C<reset>
+on the optional and leaves it without a value. Returns C<*this>.
+
+=item optional& operator= (const T& value);
+
+Assigns C<value> to the optional. Returns C<*this>.
+
+=item optional& operator= (optional<T>&& other);
+
+If C<other> has a value, assigns it to the optional by moving it. Otherwise,
+calls C<reset> on the optional and leaves it without a value. Returns C<*this>.
+
+=item optional& operator= (T&& value);
+
+Assigns C<value> to the optional by moving it. Returns C<*this>.
+
+=item ~optional ();
+
+Destroys the value associated to the optional, if it had any.
+
+=back
+
+=head3 Implementation details
+
+Optionals are rather simple: They are implemented by using a union that
+supresses the constructor of the template type, and a flag that marks whether
+the optional has a value or not.
+
+Optionals are very useful when performing lookups in mapped containers, since
+they allow us to bypass the need of additional output parameters to determine
+if a search was successful in an atomic way.
+
 =head2 Stacks
 
   #include <xrcu/stack.hpp>
@@ -331,15 +442,15 @@ Pushes C<value> to the top of the stack.
 
 Same as C<push>, only it constructs a new item by moving instead of copying.
 
-=item T pop ();
+=item optional<T> pop ();
 
-Removes the item at the top of the stack, and returns the value associated.
-If the stack is empty, it throws an exception of type C<std::runtime_error>.
+Removes the item at the top of the stack, and returns an optional with that
+value. If the stack is empty, the method returns an optional with no value.
 
-=item T top ();
+=item optional<T> top ();
 
-Fetches the current value at the top of the stack. If it's empty, it throws an
-exception of the type C<std::runtime_error>.
+Fetches the current item at the top of the stack, and returns an optional
+with it as its value. If the stack is empty, returns an optional with no value.
 
 =item size_type size () const;
 
@@ -473,117 +584,6 @@ presence of operations like C<push> and C<pop>. The only way for an iterator
 to be invalidated is it's at the beggining of the stack, and a call to C<pop>
 is made. Even then, dereferencing the iterator is valid, but advancing it will
 end prematurely, since the object was unlinked from the stack.
-
-=head2 Interlude: optionals
-
-    #include <xrcu/optional.hpp>
-
-Before moving on to the next topic, we need to take a look at an auxiliary
-structure implemented to make things easier and more convenient for users.
-This is the C<optional> type.
-
-An optional is a template type that can hold either an object of type I<T>, or
-be in an uninitialized state. In other words, the value may or may not be
-present. Unlike the usage of a pointer which may be null, an C<optional> never
-performs dynamic memory allocation, as the space required to hold the value is
-always there, even if it's not being used.
-
-Optional types have been standardized in C++17, and are present in many other
-libraries as well. However, since XRCU aims to work with the base minimum of
-C++11 compliant compilers, and because it's designed not to depend on other
-libraries or frameworks, it contains its own (lightweight) implementation.
-
-=head3 Optional API
-
-An optional is defined as such:
-
-    template <class T>
-    struct optional
-      {
-      };
-
-And its public interface is the following:
-
-=over 4
-
-=item optional ();
-
-Default constructor. Initializes the optional without a value.
-
-=item optional (const T& value);
-
-Initializes the optional to contain C<value>.
-
-=item optional (const optional<T>& other);
-
-Copy constructor. If C<other> has a value, then it initializes the optional to
-contain that same value. Otherwise, the optional will contain no value.
-
-=item optional (T&& value);
-
-Move constructor. Initializes the optional by taking ownership of C<value>.
-
-=item optional (optional<T>&& other);
-
-Move constructor. If C<other> has a value, then the optional is initialized
-by taken ownership of it. Otherwise, the optional will have no value.
-
-=item T& operator* ();
-
-=item const T& operator* () const;
-
-Returns a (possibly const) reference to the optional's value. The results are
-undefined if the optional does not contain one.
-
-=item T* operator-> ();
-
-=item const T* operator-> () const;
-
-Returns a (possibly const) pointer to the optional's value. The results are
-undefined if the optional does not contain one.
-
-=item bool has_value () const;
-
-Returns true if the optional has a value.
-
-=item void reset () const;
-
-If the optional contains a value, call its destructor and make the optional
-contain no value afterwards. Otherwise, there are no effects.
-
-=item optional& operator= (const optional<T>& other);
-
-If C<other> has a value, assigns it to the optional. Otherwise, calls C<reset>
-on the optional and leaves it without a value. Returns C<*this>.
-
-=item optional& operator= (const T& value);
-
-Assigns C<value> to the optional. Returns C<*this>.
-
-=item optional& operator= (optional<T>&& other);
-
-If C<other> has a value, assigns it to the optional by moving it. Otherwise,
-calls C<reset> on the optional and leaves it without a value. Returns C<*this>.
-
-=item optional& operator= (T&& value);
-
-Assigns C<value> to the optional by moving it. Returns C<*this>.
-
-=item ~optional ();
-
-Destroys the value associated to the optional, if it had any.
-
-=back
-
-=head3 Implementation details
-
-Optionals are rather simple: They are implemented by using a union that
-supresses the constructor of the template type, and a flag that marks whether
-the optional has a value or not.
-
-Optionals are very useful when performing lookups in mapped containers, since
-they allow us to bypass the need of additional output parameters to determine
-if a search was successful in an atomic way.
 
 =head2 Skip lists
 
@@ -984,6 +984,10 @@ Insertions are a bit more complicated. We start by performing a lookup, as
 described above, and then determine what to do based on the result: If the
 lookup came up empty, then we need to insert both the key I<and> the value;
 otherwise, we only need to update the value.
+
+If only the value needs to be updated (because the key is already present),
+then the insertion simply consists of atomically swapping the old value with
+the new one, and, if succesful, finalizing the old value as well.
 
 If we need to insert the key as well, first we decrement an internal counter
 that keeps track of how many additional elements we can insert before a rehash

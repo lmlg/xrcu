@@ -9,41 +9,34 @@ namespace xrcu
 template <class T>
 struct optional
 {
-  union _Optional
+  T *xptr;
+  alignas (alignof (T)) char buf[sizeof (T)];
+
+  T* _Ptr ()
     {
-      T value;
-      char buf[sizeof (T)];
+      return ((T *)&this->buf[0]);
+    }
 
-      T* _Ptr ()
-        {
-          return (&this->value);
-        }
-
-      const T* _Ptr () const
-        {
-          return (&this->value);
-        }
-
-      _Optional () {}
-      ~_Optional () {}
-    };
-
-  _Optional optdata;
-  bool valid = false;
+  const T* _Ptr () const
+    {
+      return ((const T *)&this->buf[0]);
+    }
 
   void _Init (const T& value)
     {
-      new (this->optdata._Ptr ()) T (value);
-      this->valid = true;
+      new (this->_Ptr ()) T (value);
+      this->xptr = this->_Ptr ();
     }
 
   void _Init (T&& value)
     {
-      new (this->optdata._Ptr ()) T (std::forward<T&&> (value));
-      this->valid = true;
+      new (this->_Ptr ()) T (std::forward<T&&> (value));
+      this->xptr = this->_Ptr ();
     }
 
-  optional () = default;
+  optional () : xptr (nullptr)
+    {
+    }
 
   optional (const T& value)
     {
@@ -52,7 +45,7 @@ struct optional
 
   optional (const optional<T>& right)
     {
-      if (right.valid)
+      if (right.xptr)
         this->_Init (*right);
     }
 
@@ -63,50 +56,49 @@ struct optional
 
   optional (optional<T>&& right)
     {
-      if (right.valid)
+      if (right.xptr)
         this->_Init (static_cast<T&&> (*right));
     }
 
   T& operator* ()
     {
-      return (*this->optdata._Ptr ());
+      return (*this->xptr);
     }
   
   const T& operator* () const
     {
-      return (*this->optdata._Ptr ());
+      return (*this->xptr);
     }
 
   T* operator-> ()
     {
-      return (this->optdata._Ptr ());
+      return (this->xptr);
     }
 
   const T* operator-> () const
     {
-      return (this->optdata._Ptr ());
+      return (this->xptr);
     }
 
   bool has_value () const
     {
-      return (this->valid);
+      return (this->xptr != nullptr);
     }
 
   void reset ()
     {
-      if (!this->valid)
+      if (!this->xptr)
         return;
 
-      T *ptr = this->optdata._Ptr ();
-      ptr->~T ();
-      this->valid = false;
+      this->xptr->~T ();
+      this->xptr = nullptr;
     }
 
   optional<T>& operator= (const optional<T>& right)
     {
-      if (!right.valid)
+      if (!right.xptr)
         this->reset ();
-      else if (!this->valid)
+      else if (!this->xptr)
         this->_Init (*right);
       else
         **this = *right;
@@ -116,9 +108,9 @@ struct optional
 
   optional<T>& operator= (optional<T>&& right)
     {
-      if (!right.valid)
+      if (!right.xptr)
         this->reset ();
-      else if (!this->valid)
+      else if (!this->xptr)
         this->_Init (std::forward<T&&> (*right));
       else
         **this = std::forward<T&&> (*right);
@@ -128,7 +120,7 @@ struct optional
 
   optional<T>& operator= (const T& value)
     {
-      if (!this->valid)
+      if (!this->xptr)
         this->_Init (value);
       else
         **this = value;
@@ -138,7 +130,7 @@ struct optional
 
   optional<T>& operator= (T&& value)
     {
-      if (!this->valid)
+      if (!this->xptr)
         this->_Init (std::forward<T&&> (value));
       else
         **this = std::forward<T&&> (value);

@@ -4,7 +4,7 @@
 <head>
 <title>XRCU documentation</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-<link rev="made" href="mailto:root@localhost" />
+</head>
 <style>
 body {
    color: black;
@@ -148,11 +148,7 @@ td {
   border-style: solid;
 }
 </style>
-</head>
-
 <body>
-
-
 
 <ul id="index">
   <li><a href="#NAME">NAME</a></li>
@@ -169,15 +165,15 @@ td {
           <li><a href="#Implementation-details">Implementation details</a></li>
         </ul>
       </li>
-      <li><a href="#Stacks">Stacks</a>
-        <ul>
-          <li><a href="#Stack-API">Stack API</a></li>
-          <li><a href="#Implementation-details1">Implementation details</a></li>
-        </ul>
-      </li>
       <li><a href="#Interlude:-optionals">Interlude: optionals</a>
         <ul>
           <li><a href="#Optional-API">Optional API</a></li>
+          <li><a href="#Implementation-details1">Implementation details</a></li>
+        </ul>
+      </li>
+      <li><a href="#Stacks">Stacks</a>
+        <ul>
+          <li><a href="#Stack-API">Stack API</a></li>
           <li><a href="#Implementation-details2">Implementation details</a></li>
         </ul>
       </li>
@@ -362,6 +358,129 @@ td {
 
 <p>In this implementation, the most expensive operation is undoubtedly <code>sync</code>. It works by locking the global registry, then checking if any thread is in a critical section, and sleeping for short periods of time in case there are. The overhead associated to <code>sync</code> is the main reason why critical sections should be short, and also why <code>finalizable</code> objects are accumulated instead of being reclaimed right away.</p>
 
+<h2 id="Interlude:-optionals">Interlude: optionals</h2>
+
+<pre><code>    #include &lt;xrcu/optional.hpp&gt;</code></pre>
+
+<p>Before moving on to the topic of containers, we need to take a look at an auxiliary structure implemented to make things easier and more convenient for users. This is the <code>optional</code> type.</p>
+
+<p>An optional is a template type that can hold either an object of type <i>T</i>, or be in an uninitialized state. In other words, the value may or may not be present. Unlike the usage of a pointer which may be null, an <code>optional</code> never performs dynamic memory allocation, as the space required to hold the value is always there, even if it&#39;s not being used.</p>
+
+<p>Optional types have been standardized in C++17, and are present in many other libraries as well. However, since XRCU aims to work with the base minimum of C++11 compliant compilers, and because it&#39;s designed not to depend on other libraries or frameworks, it contains its own (lightweight) implementation.</p>
+
+<h3 id="Optional-API">Optional API</h3>
+
+<p>An optional is defined as such:</p>
+
+<pre><code>    template &lt;class T&gt;
+    struct optional
+      {
+      };</code></pre>
+
+<p>And its public interface is the following:</p>
+
+<dl>
+
+<dt id="optional">optional ();</dt>
+<dd>
+
+<p>Default constructor. Initializes the optional without a value.</p>
+
+</dd>
+<dt id="optional-const-T-value">optional (const T&amp; value);</dt>
+<dd>
+
+<p>Initializes the optional to contain <code>value</code>.</p>
+
+</dd>
+<dt id="optional-const-optionalT-other">optional (const optional&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. If <code>other</code> has a value, then it initializes the optional to contain that same value. Otherwise, the optional will contain no value.</p>
+
+</dd>
+<dt id="optional-T-value">optional (T&amp;&amp; value);</dt>
+<dd>
+
+<p>Move constructor. Initializes the optional by taking ownership of <code>value</code>.</p>
+
+</dd>
+<dt id="optional-optionalT-other">optional (optional&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move constructor. If <code>other</code> has a value, then the optional is initialized by taken ownership of it. Otherwise, the optional will have no value.</p>
+
+</dd>
+<dt id="T-operator">T&amp; operator* ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-operator-const">const T&amp; operator* () const;</dt>
+<dd>
+
+<p>Returns a (possibly const) reference to the optional&#39;s value. The results are undefined if the optional does not contain one.</p>
+
+</dd>
+<dt id="T-operator1">T* operator-&gt; ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-operator--const">const T* operator-&gt; () const;</dt>
+<dd>
+
+<p>Returns a (possibly const) pointer to the optional&#39;s value. The results are undefined if the optional does not contain one.</p>
+
+</dd>
+<dt id="bool-has_value-const">bool has_value () const;</dt>
+<dd>
+
+<p>Returns true if the optional has a value.</p>
+
+</dd>
+<dt id="void-reset-const">void reset () const;</dt>
+<dd>
+
+<p>If the optional contains a value, call its destructor and make the optional contain no value afterwards. Otherwise, there are no effects.</p>
+
+</dd>
+<dt id="optional-operator-const-optionalT-other">optional&amp; operator= (const optional&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>If <code>other</code> has a value, assigns it to the optional. Otherwise, calls <code>reset</code> on the optional and leaves it without a value. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional-operator-const-T-value">optional&amp; operator= (const T&amp; value);</dt>
+<dd>
+
+<p>Assigns <code>value</code> to the optional. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional-operator-optionalT-other">optional&amp; operator= (optional&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>If <code>other</code> has a value, assigns it to the optional by moving it. Otherwise, calls <code>reset</code> on the optional and leaves it without a value. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional-operator-T-value">optional&amp; operator= (T&amp;&amp; value);</dt>
+<dd>
+
+<p>Assigns <code>value</code> to the optional by moving it. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="optional1">~optional ();</dt>
+<dd>
+
+<p>Destroys the value associated to the optional, if it had any.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details1">Implementation details</h3>
+
+<p>Optionals are rather simple: They are implemented by using a union that supresses the constructor of the template type, and a flag that marks whether the optional has a value or not.</p>
+
+<p>Optionals are very useful when performing lookups in mapped containers, since they allow us to bypass the need of additional output parameters to determine if a search was successful in an atomic way.</p>
+
 <h2 id="Stacks">Stacks</h2>
 
 <pre><code>  #include &lt;xrcu/stack.hpp&gt;</code></pre>
@@ -442,16 +561,16 @@ td {
 <p>Same as <code>push</code>, only it constructs a new item by moving instead of copying.</p>
 
 </dd>
-<dt id="T-pop">T pop ();</dt>
+<dt id="optionalT-pop">optional&lt;T&gt; pop ();</dt>
 <dd>
 
-<p>Removes the item at the top of the stack, and returns the value associated. If the stack is empty, it throws an exception of type <code>std::runtime_error</code>.</p>
+<p>Removes the item at the top of the stack, and returns an optional with that value. If the stack is empty, the method returns an optional with no value.</p>
 
 </dd>
-<dt id="T-top">T top ();</dt>
+<dt id="optionalT-top">optional&lt;T&gt; top ();</dt>
 <dd>
 
-<p>Fetches the current value at the top of the stack. If it&#39;s empty, it throws an exception of the type <code>std::runtime_error</code>.</p>
+<p>Fetches the current item at the top of the stack, and returns an optional with it as its value. If the stack is empty, returns an optional with no value.</p>
 
 </dd>
 <dt id="size_type-size-const">size_type size () const;</dt>
@@ -614,136 +733,13 @@ td {
 </dd>
 </dl>
 
-<h3 id="Implementation-details1">Implementation details</h3>
+<h3 id="Implementation-details2">Implementation details</h3>
 
 <p>There really isn&#39;t much to say about the internal details of the stack. It&#39;s probably the easiest lock free structure to implement. As with most other implementations, the one in XRCU consists in an atomic pointer to the top node and an atomic counter to keep track of its size. The use of RCU prevents the biggest issue with this design: The ABA problem.</p>
 
 <p>The only noteworthy thing to point out is that the <code>swap</code> method is safe to call from multiple threads as well. In order to achive this, the library uses a special <i>sentinel</i> value, that is temporarily set as the head node when a swap is undergoing. During a swap, <code>push</code> and <code>pop</code> cannot proceed, since they check against that special value before modifying the stack.</p>
 
 <p>Note that because stack iterators are implicit critical sections, and because of stacks&#39; implementation, iterating a stack will always be safe, even in the presence of operations like <code>push</code> and <code>pop</code>. The only way for an iterator to be invalidated is it&#39;s at the beggining of the stack, and a call to <code>pop</code> is made. Even then, dereferencing the iterator is valid, but advancing it will end prematurely, since the object was unlinked from the stack.</p>
-
-<h2 id="Interlude:-optionals">Interlude: optionals</h2>
-
-<pre><code>    #include &lt;xrcu/optional.hpp&gt;</code></pre>
-
-<p>Before moving on to the next topic, we need to take a look at an auxiliary structure implemented to make things easier and more convenient for users. This is the <code>optional</code> type.</p>
-
-<p>An optional is a template type that can hold either an object of type <i>T</i>, or be in an uninitialized state. In other words, the value may or may not be present. Unlike the usage of a pointer which may be null, an <code>optional</code> never performs dynamic memory allocation, as the space required to hold the value is always there, even if it&#39;s not being used.</p>
-
-<p>Optional types have been standardized in C++17, and are present in many other libraries as well. However, since XRCU aims to work with the base minimum of C++11 compliant compilers, and because it&#39;s designed not to depend on other libraries or frameworks, it contains its own (lightweight) implementation.</p>
-
-<h3 id="Optional-API">Optional API</h3>
-
-<p>An optional is defined as such:</p>
-
-<pre><code>    template &lt;class T&gt;
-    struct optional
-      {
-      };</code></pre>
-
-<p>And its public interface is the following:</p>
-
-<dl>
-
-<dt id="optional">optional ();</dt>
-<dd>
-
-<p>Default constructor. Initializes the optional without a value.</p>
-
-</dd>
-<dt id="optional-const-T-value">optional (const T&amp; value);</dt>
-<dd>
-
-<p>Initializes the optional to contain <code>value</code>.</p>
-
-</dd>
-<dt id="optional-const-optionalT-other">optional (const optional&lt;T&gt;&amp; other);</dt>
-<dd>
-
-<p>Copy constructor. If <code>other</code> has a value, then it initializes the optional to contain that same value. Otherwise, the optional will contain no value.</p>
-
-</dd>
-<dt id="optional-T-value">optional (T&amp;&amp; value);</dt>
-<dd>
-
-<p>Move constructor. Initializes the optional by taking ownership of <code>value</code>.</p>
-
-</dd>
-<dt id="optional-optionalT-other">optional (optional&lt;T&gt;&amp;&amp; other);</dt>
-<dd>
-
-<p>Move constructor. If <code>other</code> has a value, then the optional is initialized by taken ownership of it. Otherwise, the optional will have no value.</p>
-
-</dd>
-<dt id="T-operator">T&amp; operator* ();</dt>
-<dd>
-
-</dd>
-<dt id="const-T-operator-const">const T&amp; operator* () const;</dt>
-<dd>
-
-<p>Returns a (possibly const) reference to the optional&#39;s value. The results are undefined if the optional does not contain one.</p>
-
-</dd>
-<dt id="T-operator1">T* operator-&gt; ();</dt>
-<dd>
-
-</dd>
-<dt id="const-T-operator--const">const T* operator-&gt; () const;</dt>
-<dd>
-
-<p>Returns a (possibly const) pointer to the optional&#39;s value. The results are undefined if the optional does not contain one.</p>
-
-</dd>
-<dt id="bool-has_value-const">bool has_value () const;</dt>
-<dd>
-
-<p>Returns true if the optional has a value.</p>
-
-</dd>
-<dt id="void-reset-const">void reset () const;</dt>
-<dd>
-
-<p>If the optional contains a value, call its destructor and make the optional contain no value afterwards. Otherwise, there are no effects.</p>
-
-</dd>
-<dt id="optional-operator-const-optionalT-other">optional&amp; operator= (const optional&lt;T&gt;&amp; other);</dt>
-<dd>
-
-<p>If <code>other</code> has a value, assigns it to the optional. Otherwise, calls <code>reset</code> on the optional and leaves it without a value. Returns <code>*this</code>.</p>
-
-</dd>
-<dt id="optional-operator-const-T-value">optional&amp; operator= (const T&amp; value);</dt>
-<dd>
-
-<p>Assigns <code>value</code> to the optional. Returns <code>*this</code>.</p>
-
-</dd>
-<dt id="optional-operator-optionalT-other">optional&amp; operator= (optional&lt;T&gt;&amp;&amp; other);</dt>
-<dd>
-
-<p>If <code>other</code> has a value, assigns it to the optional by moving it. Otherwise, calls <code>reset</code> on the optional and leaves it without a value. Returns <code>*this</code>.</p>
-
-</dd>
-<dt id="optional-operator-T-value">optional&amp; operator= (T&amp;&amp; value);</dt>
-<dd>
-
-<p>Assigns <code>value</code> to the optional by moving it. Returns <code>*this</code>.</p>
-
-</dd>
-<dt id="optional1">~optional ();</dt>
-<dd>
-
-<p>Destroys the value associated to the optional, if it had any.</p>
-
-</dd>
-</dl>
-
-<h3 id="Implementation-details2">Implementation details</h3>
-
-<p>Optionals are rather simple: They are implemented by using a union that supresses the constructor of the template type, and a flag that marks whether the optional has a value or not.</p>
-
-<p>Optionals are very useful when performing lookups in mapped containers, since they allow us to bypass the need of additional output parameters to determine if a search was successful in an atomic way.</p>
 
 <h2 id="Skip-lists">Skip lists</h2>
 
@@ -1168,6 +1164,8 @@ td {
 <p>When a lookup is performed, the passed <code>key</code> is hashed with the table&#39;s own internal hasher and a hash code is computed. Using this code, we produce an index into the vector and then we iterate over it, looking for a key that matches, or until we find a free entry, in which case the lookup fails.</p>
 
 <p>Insertions are a bit more complicated. We start by performing a lookup, as described above, and then determine what to do based on the result: If the lookup came up empty, then we need to insert both the key <i>and</i> the value; otherwise, we only need to update the value.</p>
+
+<p>If only the value needs to be updated (because the key is already present), then the insertion simply consists of atomically swapping the old value with the new one, and, if succesful, finalizing the old value as well.</p>
 
 <p>If we need to insert the key as well, first we decrement an internal counter that keeps track of how many additional elements we can insert before a rehash is triggered. If the counter has already reached zero, then we have to rehash before inserting the key and value. If no rehash is needed, or after it&#39;s done, both the key and value are updated atomically (Some platforms allow us to do it in a single step, otherwise the operations are done sequentially).</p>
 

@@ -2,9 +2,9 @@
 #define __XRCU_STACK_HPP__   1
 
 #include "xrcu.hpp"
+#include "optional.hpp"
 #include <atomic>
 #include <cstddef>
-#include <stdexcept>
 #include <utility>
 #include <initializer_list>
 
@@ -238,28 +238,24 @@ struct stack
       this->_Base()->sb.push_node (new node_type (std::forward<Args>(args)...));
     }
 
-  T pop ()
+  optional<T> pop ()
     {
       cs_guard g;
       auto node = (node_type *)this->_Base()->sb.pop_node ();
 
       if (!node)
-        throw std::runtime_error ("stack<T>::pop: stack is empty");
+        return (optional<T> ());
 
-      T ret = node->value;
+      optional<T> ret { node->value };
       finalize (node);
       return (ret);
     }
 
-  T top ()
+  optional<T> top ()
     {
       cs_guard g;
       auto node = (node_type *)this->_Base()->sb.root ();
-
-      if (!node)
-        throw std::runtime_error ("stack<T>::top: stack is empty");
-
-      return (node->value);
+      return (node ? optional<T> { node->value } : optional<T> ());
     }
 
   struct iterator : public detail::stack_iter_base
