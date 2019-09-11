@@ -324,7 +324,8 @@ struct hash_table
 
       if (k == key_traits::FREE)
         return (put_p ? (found = true, vidx) : (size_t)-1);
-      else if (this->eqfn (key_traits().get (k), key))
+      else if (k != key_traits::DELT &&
+          this->eqfn (key_traits().get (k), key))
         return (vidx);
 
       for (size_t initial = idx, sec = detail::secondary_hash (code) ; ; )
@@ -340,7 +341,8 @@ struct hash_table
 
           if (k == key_traits::FREE)
             return (put_p ? (found = true, vidx) : (size_t)-1);
-          else if (this->eqfn (key_traits().get (k), key))
+          else if (k != key_traits::DELT &&
+              this->eqfn (key_traits().get (k), key))
             return (vidx);
         }
     }
