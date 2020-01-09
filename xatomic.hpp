@@ -124,7 +124,15 @@ xatomic_and (uintptr_t *ptr, uintptr_t val)
 inline void
 xatomic_spin_nop ()
 {
-  __asm__ __volatile__ ("pause");
+  __asm__ __volatile__ ("pause" : : : "memory");
+}
+
+#  elif defined (__aarch64__) || defined (__arm__)
+
+inline void
+xatomic_spin_nop ()
+{
+  __asm__ __volatile__ ("wfe" : : : "memory");
 }
 
 #  else
