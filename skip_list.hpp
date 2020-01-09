@@ -357,7 +357,13 @@ struct skip_list
 
       cs_guard g;
       this->_Find_preds (0, key, detail::SL_UNLINK_NONE, preds, succs);
-      const_iterator ret { preds[0] };
+
+      uintptr_t it_val;
+      for (auto val : preds)
+        if ((it_val = val) != 0)
+          break;
+
+      const_iterator ret { it_val };
       if (ret.node == this->_Head ())
         ++ret;
 

@@ -40,6 +40,11 @@ struct td_link
       return (this == this->next);
     }
 
+  bool linked_p () const
+    {
+      return (this->next != nullptr);
+    }
+
   void splice (td_link *dst)
     {
       if (this->empty_p ())
@@ -107,7 +112,6 @@ static const unsigned int MAX_FINS = XRCU_MAX_FINS;
 
 struct tl_data : public td_link
 {
-  bool init;
   bool must_flush;
   unsigned int n_fins;
   std::atomic_uintptr_t counter;
@@ -149,6 +153,7 @@ struct tl_data : public td_link
 
       this->fin_objs = nullptr;
       this->n_fins = 0;
+      this->must_flush = false;
       return (true);
     }
 
@@ -167,7 +172,7 @@ struct tl_data : public td_link
 
   ~tl_data ()
     {
-      if (!this->init)
+      if (!this->linked_p ())
         return;
 
       this->counter.store (0, std::memory_order_release);
@@ -187,11 +192,8 @@ static inline tl_data*
 local_data ()
 {
   auto self = &tldata;
-  if (!self->init)
-    {
-      global_reg.add_tdata (self);
-      self->init = true;
-    }
+  if (!self->linked_p ())
+    global_reg.add_tdata (self);
 
   return (self);
 }
@@ -216,7 +218,8 @@ void exit_cs ()
 
 bool in_cs ()
 {
-  return (local_data()->in_cs ());
+  auto self = &tldata;
+  return (self->linked_p () && self->in_cs ());
 }
 
 void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
@@ -345,7 +348,7 @@ atfork_child ()
   global_reg.root.init_head ();
 
   auto self = &tldata;
-  if (!self->init)
+  if (!self->linked_p ())
     return;
 
   // Manually add ourselves to the registry without locking.
