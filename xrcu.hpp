@@ -61,9 +61,6 @@ struct atfork
 // Fetch the `pthread_atfork' callbacks for XRCU.
 extern atfork atfork_data ();
 
-// Get the library version
-extern void library_version (int& major, int& minor);
-
 // Count the number of trailing zeroes.
 
 #ifdef __GNUC__
