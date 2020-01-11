@@ -324,7 +324,8 @@ struct hash_table
 
       if (k == key_traits::FREE)
         return (put_p ? (found = true, vidx) : (size_t)-1);
-      else if (this->eqfn (key_traits().get (k), key))
+      else if (k != key_traits::DELT &&
+          this->eqfn (key_traits().get (k), key))
         return (vidx);
 
       for (size_t initial = idx, sec = detail::secondary_hash (code) ; ; )
@@ -340,7 +341,8 @@ struct hash_table
 
           if (k == key_traits::FREE)
             return (put_p ? (found = true, vidx) : (size_t)-1);
-          else if (this->eqfn (key_traits().get (k), key))
+          else if (k != key_traits::DELT &&
+              this->eqfn (key_traits().get (k), key))
             return (vidx);
         }
     }
@@ -403,8 +405,8 @@ struct hash_table
           s.vector = nullptr;
 
           np->nelems.store (nelem, std::memory_order_relaxed);
-          this->grow_limit.store ((intptr_t)(this->loadf *
-              np->entries) - nelem, std::memory_order_relaxed);
+          this->grow_limit.store ((intptr_t)(np->entries * this->loadf) -
+                                  nelem, std::memory_order_relaxed);
           std::atomic_thread_fence (std::memory_order_release);
 
           /* At this point, another thread may decrement the growth limit
@@ -497,7 +499,7 @@ struct hash_table
               uintptr_t v = f.call0 (args...);
 #ifdef XRCU_HAVE_XATOMIC_DCAS
               if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
-                  val_traits::FREE, k, v))
+                                     val_traits::FREE, k, v))
 #else
               if (xatomic_cas_bool (ep + idx + 0, key_traits::FREE, k) &&
                   xatomic_cas_bool (ep + idx + 1, val_traits::FREE, v))
@@ -573,7 +575,7 @@ struct hash_table
       try
         {
           return (this->_Upsert (k, key,
-            _Updater<Fn, val_traits> (f), args...));
+                                 _Updater<Fn, val_traits> (f), args...));
         }
       catch (...)
         {

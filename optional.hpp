@@ -51,13 +51,16 @@ struct optional
 
   optional (T&& value)
     {
-      this->_Init (static_cast<T&&> (value));
+      this->_Init (std::forward<T&&> (value));
     }
 
   optional (optional<T>&& right) : xptr (nullptr)
     {
       if (right.xptr)
-        this->_Init (static_cast<T&&> (*right));
+        {
+          this->_Init (std::forward<T&&> (*right));
+          right.xptr = nullptr;
+        }
     }
 
   T& operator* ()
@@ -115,6 +118,7 @@ struct optional
       else
         **this = std::forward<T&&> (*right);
 
+      right.xptr = nullptr;
       return (*this);
     }
 

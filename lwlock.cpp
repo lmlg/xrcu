@@ -39,7 +39,7 @@ lwlock_acquire (uintptr_t *ptr)
   while (true)
     {
       for (int i = 0; i < MAX_SPINS && *ptr != 0; ++i)
-        ;
+        xrcu::xatomic_spin_nop ();
 
       if (xrcu::xatomic_swap (ptr, 2) == 0)
         return;
@@ -65,9 +65,7 @@ lwlock_release (uintptr_t *ptr)
 static inline void
 lwlock_acquire (uintptr_t *ptr)
 {
-  const int MAX_RETRIES = 100;
-  const int MAX_NSPINS = 1000;
-  int retries = 0;
+  const int MAX_SPINS = 1000;
 
   while (true)
     {
@@ -75,13 +73,12 @@ lwlock_acquire (uintptr_t *ptr)
         return;
 
       for (int i = 0; i < MAX_SPINS && *ptr != 0; ++i)
-          ;
+        xrcu::xatomic_spin_nop ();
 
-      if (++retries == MAX_RETRIES)
-        {
-          std::this_thread::sleep_for (std::chrono::milliseconds (1));
-          retries = 0;
-        }
+      if (xrcu::xatomic_swap (ptr, 1) == 0)
+        break;
+
+      std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 }
 
