@@ -43,10 +43,10 @@ struct optional
       this->_Init (value);
     }
 
-  optional (const optional<T>& right)
+  optional (const optional<T>& right) : xptr (nullptr)
     {
       if (right.xptr)
-        this->_Init (*right);
+        this->_Init (*right)
     }
 
   optional (T&& value)
@@ -54,7 +54,7 @@ struct optional
       this->_Init (static_cast<T&&> (value));
     }
 
-  optional (optional<T>&& right)
+  optional (optional<T>&& right) : xptr (nullptr)
     {
       if (right.xptr)
         this->_Init (static_cast<T&&> (*right));
