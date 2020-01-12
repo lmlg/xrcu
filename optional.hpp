@@ -9,7 +9,7 @@ namespace xrcu
 template <class T>
 struct optional
 {
-  T *xptr;
+  T *xptr = nullptr;
   alignas (alignof (T)) char buf[sizeof (T)];
 
   T* _Ptr ()
@@ -34,7 +34,7 @@ struct optional
       this->xptr = this->_Ptr ();
     }
 
-  optional () : xptr (nullptr)
+  optional ()
     {
     }
 
@@ -43,10 +43,10 @@ struct optional
       this->_Init (value);
     }
 
-  optional (const optional<T>& right) : xptr (nullptr)
+  optional (const optional<T>& right)
     {
       if (right.xptr)
-        this->_Init (*right)
+        this->_Init (*right);
     }
 
   optional (T&& value)
@@ -54,7 +54,7 @@ struct optional
       this->_Init (std::forward<T&&> (value));
     }
 
-  optional (optional<T>&& right) : xptr (nullptr)
+  optional (optional<T>&& right)
     {
       if (right.xptr)
         {
