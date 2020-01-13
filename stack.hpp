@@ -50,6 +50,8 @@ struct stack_base
   stack_node_base* root () const;
 
   void push_node (stack_node_base *nodep);
+  void push_nodes (stack_node_base *nodep,
+    stack_node_base **outp, size_t cnt);
   stack_node_base* pop_node ();
 
   bool empty () const
@@ -230,6 +232,70 @@ struct stack
   void push (T&& value)
     {
       this->_Base()->sb.push_node (new node_type (std::move (value)));
+    }
+
+  template <class Iter>
+  void _Push (Iter first, Iter last, std::false_type)
+    {
+      if (first == last)
+        return;
+
+      node_type *np;
+
+      try
+        {
+          np = new node_type (*first);
+          auto **outp = &np->next;
+          size_t cnt = 1;
+
+          for (++first; first != last; ++first, ++cnt)
+            {
+              node_type *tmp = new node_type (*first);
+              *outp = tmp, outp = &tmp->next;
+            }
+
+          this->_Base()->sb.push_nodes (np, outp, cnt);
+        }
+      catch (...)
+        {
+          _Stkbase::clean_nodes (np);
+          throw;
+        }
+    }
+
+  template <class T1, class T2>
+  void _Push (T1 n, const T2& value, std::true_type)
+    {
+      if (n == 0)
+        return;
+
+      node_type *np;
+
+      try
+        {
+          np = new node_type (value);
+          auto **outp = &np->next;
+          T1 cnt = n;
+
+          for (; n != 0; --n)
+            {
+              node_type *tmp = new node_type (value);
+              *outp = tmp, outp = &tmp->next;
+            }
+
+          this->_Base()->sb.push_nodes (np, outp, cnt);
+        }
+      catch (...)
+        {
+          _Stkbase::clean_nodes (np);
+          throw;
+        }
+    }
+
+  template <class T1, class T2>
+  void push (T1 first, T2 last)
+    {
+      this->_Push (first, last, typename std::is_integral<T1>::type ());
     }
 
   template <class ...Args>
