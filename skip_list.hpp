@@ -324,8 +324,8 @@ struct skip_list
 
               if (it == 0 || this->cmpfn (key, _Self::_Getk (it)) ||
                   (unlink != detail::SL_UNLINK_FORCE &&
-                   (got = !this->cmpfn (_Self::_Getk (it), key))))
-                  break;
+                    (got = !this->cmpfn (_Self::_Getk (it), key))))
+                break;
 
               pr = it, it = next;
             }
