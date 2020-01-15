@@ -99,7 +99,9 @@ struct optional
 
   optional<T>& operator= (const optional<T>& right)
     {
-      if (!right.xptr)
+      if (&right == this)
+        ;
+      else if (!right.xptr)
         this->reset ();
       else if (!this->xptr)
         this->_Init (*right);
@@ -111,6 +113,9 @@ struct optional
 
   optional<T>& operator= (optional<T>&& right)
     {
+      if (&right == this)
+        return (*this);
+
       if (!right.xptr)
         this->reset ();
       else if (!this->xptr)

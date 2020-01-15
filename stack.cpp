@@ -40,6 +40,28 @@ void stack_base::push_node (stack_node_base *nodep)
     }
 }
 
+void stack_base::push_nodes (stack_node_base *nodep,
+  stack_node_base **outp, size_t cnt)
+{
+  while (true)
+    {
+      auto tmp = this->rnode.load (std::memory_order_relaxed);
+      if (tmp == NODE_SPIN)
+        {
+          xatomic_spin_nop ();
+          continue;
+        }
+
+     *outp = tmp;
+     if (this->rnode.compare_exchange_weak (tmp, nodep,
+         std::memory_order_acq_rel, std::memory_order_relaxed))
+       {
+         this->size.fetch_add (cnt, std::memory_order_relaxed);
+         break;
+       }
+    }
+}
+
 stack_node_base* stack_base::pop_node ()
 {
   cs_guard g;

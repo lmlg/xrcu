@@ -438,6 +438,14 @@ Move constructor. Takes ownership of the values in C<other>.
 
 Pushes C<value> to the top of the stack.
 
+=item template <class Iter> void push (Iter first, Iter last)
+
+Pushes the values in the range [C<first>, C<last>) to the stack.
+
+=item template <class Integer> void push (Integer n, T value)
+
+Pushes C<n> times C<value> to the stack.
+
 =item void emplace (T&& value);
 
 Same as C<push>, only it constructs a new item by moving instead of copying.

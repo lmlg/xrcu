@@ -3,7 +3,9 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <title>XRCU documentation</title>
+<link rel="stylesheet" href="x.css" type="text/css" />
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
 </head>
 <style>
 body {
@@ -148,7 +150,10 @@ td {
   border-style: solid;
 }
 </style>
+
 <body>
+
+
 
 <ul id="index">
   <li><a href="#NAME">NAME</a></li>
@@ -553,6 +558,18 @@ td {
 <dd>
 
 <p>Pushes <code>value</code> to the top of the stack.</p>
+
+</dd>
+<dt id="template-class-Iter-void-push-Iter-first-Iter-last">template &lt;class Iter&gt; void push (Iter first, Iter last)</dt>
+<dd>
+
+<p>Pushes the values in the range [<code>first</code>, <code>last</code>) to the stack.</p>
+
+</dd>
+<dt id="template-class-Integer-void-push-Integer-n-T-value">template &lt;class Integer&gt; void push (Integer n, T value)</dt>
+<dd>
+
+<p>Pushes <code>n</code> times <code>value</code> to the stack.</p>
 
 </dd>
 <dt id="void-emplace-T-value">void emplace (T&amp;&amp; value);</dt>

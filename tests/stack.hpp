@@ -70,6 +70,20 @@ void test_single_threaded ()
 
   stk.push (mkstr (50));
   ASSERT (stk >= s2);
+
+  {
+    xrcu::stack<int> tmp;
+    int values[] = { 1, 2, 3, 4, 5 };
+    const size_t N = sizeof (values) / sizeof (*values);
+
+    tmp.push (values, values + N);
+    size_t i = 0;
+
+    for (auto val : tmp)
+      ASSERT (val == values[i++]);
+
+    ASSERT (i == N);
+  }
 }
 
 static void
