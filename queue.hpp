@@ -44,49 +44,55 @@ destroy (T *ptr)
   ptr->~T ();
 }
 
-struct q_data : public finalizable
+struct alignas (uintptr_t) q_data : public finalizable
 {
-  uintptr_t *ptrs;
-  void *elems;
   size_t cap;
+  uintptr_t *ptrs;
   std::atomic<size_t> wr_idx;
   std::atomic<size_t> rd_idx;
-  std::atomic<size_t> invalid;
 
-  q_data (size_t e_size, size_t e_align, size_t cnt);
+  static q_data* make (size_t cnt);
 
   size_t _Wridx () const
     {
       return (this->wr_idx.load (std::memory_order_relaxed));
     }
 
-  uintptr_t* _Next (std::atomic<size_t> *idxp, size_t nmax)
+  size_t _Rdidx () const
+    {
+      return (this->rd_idx.load (std::memory_order_relaxed));
+    }
+
+  bool push (uintptr_t val)
     {
       while (true)
         {
-          size_t curr = idxp->load (std::memory_order_relaxed);
-          if (curr == nmax)
-            return (nullptr);
-          else if (idxp->compare_exchaneg_weak (curr, curr + 1,
-              std::memory_order_acq_rel, std::memory_order_relaxed))
-            return (&this->ptrs[curr]);
+          size_t curr = this->_Wridx ();
+          if (curr >= this->cap)
+            return (false);
+          else if (xatomic_cas_bool (&this->ptrs[curr], 0, val))
+            {
+              this->wr_idx.add_fetch (1, std::memory_order_relaxed);
+              return (true);
+            }
 
           xatomic_spin_nop ();
         }
     }
 
-  uintptr_t* push ()
-    {
-      return (this->_Next (&this->wr_idx, this->cap));
-    }
-
-  uintptr_t* pop ()
+  uintptr_t pop (uintptr_t xbit)
     {
       while (true)
         {
-          uintptr_t *p = this->_Next(&this->rd_idx, this->_Wridx ());
-          if (!p || *p)
-            return (p);
+          size_t curr = this->_Rdidx ();
+          if (curr >= this->_Wridx ())
+            return (0);
+
+          uintptr_t rv = this->ptrs[curr];
+          if ((rv & xbit) == 0 &&
+              this->rd_idx.compare_exchange_weak (curr, curr + 1,
+                std::memory_order_acq_rel, std::memory_order_relaxed))
+            return (rv);
 
           xatomic_spin_nop ();
         }
@@ -94,27 +100,10 @@ struct q_data : public finalizable
 
   size_t size () const
     {
-      return (this->_Wridx () - this->_Rdidx () -
-              this->invalid.load (std::memory_order_relaxed));
+      return (this->_Wridx () - this->_Rdidx ());
     }
 
-  ~q_data ();
-};
-
-struct q_ptrs_guard
-{
-  uintptr_t *px;
-  size_t nx;
-
-  q_ptrs_guard (q_data *qdp) : px (qdp->ptrs), nx (qdp->cap)
-    {
-    }
-
-  ~q_ptrs_guard ()
-    {
-      for (size_t i = 0; i < this->nx; ++i)
-        xatomic_and (&px[i], ~1);
-    }
+  void safe_destroy ();
 };
 
 } // namespace detail
@@ -126,8 +115,7 @@ struct queue
 
   void _Init (size_t size)
     {
-      this->impl = new detail::q_data (sizeof (T), alignof (T),
-                                       detail::upsize (size));
+      this->impl = detail::q_data::make (size);
     }
 
   queue ()
@@ -135,55 +123,51 @@ struct queue
       this->_Init (8);
     }
 
+  bool _Rearm (uintptr_t elem, detail::q_data *qdp)
+    {
+      size_t ix = qdp->_Rdidx ();
+      uintptr_t prev = xatomic_or (&qdp->ptrs[ix], 1);
+      if (prev & 1)
+        {
+          while (qdp == this->impl)
+            xatomic_spin_nop ();
+
+          return (false);
+        }
+
+      detail::q_data_guard g { qdp, ix };
+      auto nq = detail::q_data::make (qdp->cap * 2);
+
+      for (ix < qdp->cap; ++ix)
+    }
+ 
   void push (const T& elem)
     {
       cs_guard g;
       auto qdp = this->impl;
+      uintptr_t val = this->_Make (elem);
 
       while (true)
         {
-          size_t idx = qdp->push_idx ();
-          if (idx == (size_t)-1)
-            {
-              this->_Rearm (qdp);
-              continue;
-            }
+          if (qdp->push (val) || this->_Rearm (val, qdp))
+            break;
 
-          T *ptr = (T *)qdp->elems + idx;
-          try
-            {
-              new (ptr) T (elem);
-            }
-          catch (...)
-            {
-              qdp->invalid.add_fetch (1, std::memory_order_relaxed);
-              throw;
-            }
-
-          if (xatomic_cas_bool (&qdp->ptrs[idx], 0, (uintptr_t)ptr))
-            return;
-
-          /* The queue was being rearmed before we installed the element.
-           * Destroy it and try again. */
-
-          detail::destroy<T> (ptr);
           while (qdp == this->impl)
             xatomic_spin_nop ();
-
-          qdp = this->impl;
         }
     }
 
   optional<T> pop ()
     {
       cs_guard g;
-      auto qdp = this->impl;
-      size_t idx = qdp->pop_idx ();
+      uintptr_t val = this->impl->pop ();
 
-      if (idx == (size_t)-1)
+      if (!val)
         return (optional<T> ());
 
-      return (optional<T> (*((T *)qdp->elems + idx)));
+      optional<T> rv (this->_Get (val));
+      this->_Fini (val);
+      return (rv);
     }
 
   size_t size () const
