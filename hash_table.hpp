@@ -5,6 +5,7 @@
 #include "xatomic.hpp"
 #include "optional.hpp"
 #include "lwlock.hpp"
+#include "utils.hpp"
 #include <atomic>
 #include <functional>
 #include <type_traits>
@@ -20,65 +21,6 @@ namespace xrcu
 
 namespace detail
 {
-
-template <class T>
-struct alignas (8) ht_wrapper : public finalizable
-{
-  T value;
-
-  ht_wrapper (const T& val) : value (val) {}
-};
-
-template <bool Integral, class T>
-struct ht_traits
-{
-  static const uintptr_t XBIT = (uintptr_t)1 << (sizeof (uintptr_t) * 8 - 1);
-  static const uintptr_t FREE = (~(uintptr_t)0) & ~XBIT;
-  static const uintptr_t DELT = FREE >> 1;
-  typedef T value_type;
-
-  uintptr_t make (T val) const noexcept
-    {
-      return ((uintptr_t)(typename std::make_unsigned<T>::type)val);
-    }
-
-  T get (uintptr_t w) const
-    {
-      return ((T)(w & ~XBIT));
-    }
-
-  void destroy (uintptr_t) const {}
-  void free (uintptr_t) const {}
-};
-
-template <class T>
-struct ht_traits<false, T>
-{
-  static const uintptr_t XBIT = 1;
-  static const uintptr_t FREE = 2;
-  static const uintptr_t DELT = 4;
-  typedef T value_type;
-
-  uintptr_t make (const T& val) const
-    {
-      return ((uintptr_t)(new ht_wrapper<T> (val)));
-    }
-
-  T& get (uintptr_t addr) const
-    {
-      return (((ht_wrapper<T> *)(addr & ~XBIT))->value);
-    }
-
-  void destroy (uintptr_t addr) const
-    {
-      finalize ((ht_wrapper<T> *)addr);
-    }
-
-  void free (uintptr_t addr) const
-    {
-      delete (ht_wrapper<T> *)addr;
-    }
-};
 
 inline constexpr size_t table_idx (size_t idx)
 {
@@ -206,11 +148,11 @@ template <class KeyT, class ValT,
   class HashFn = std::hash<KeyT> >
 struct hash_table
 {
-  typedef detail::ht_traits<(sizeof (KeyT) < sizeof (uintptr_t) &&
+  typedef detail::wrapped_traits<(sizeof (KeyT) < sizeof (uintptr_t) &&
       std::is_integral<KeyT>::value) || (std::is_pointer<KeyT>::value &&
       alignof (KeyT) >= 8), KeyT> key_traits;
 
-  typedef detail::ht_traits<(sizeof (ValT) < sizeof (uintptr_t) &&
+  typedef detail::wrapped_traits<(sizeof (ValT) < sizeof (uintptr_t) &&
       std::is_integral<ValT>::value) || (std::is_pointer<ValT>::value &&
       alignof (ValT) >= 8), ValT> val_traits;
 
@@ -325,7 +267,7 @@ struct hash_table
       if (k == key_traits::FREE)
         return (put_p ? (found = true, vidx) : (size_t)-1);
       else if (k != key_traits::DELT &&
-          this->eqfn (key_traits().get (k), key))
+          this->eqfn (key_traits::get (k), key))
         return (vidx);
 
       for (size_t initial = idx, sec = detail::secondary_hash (code) ; ; )
@@ -342,7 +284,7 @@ struct hash_table
           if (k == key_traits::FREE)
             return (put_p ? (found = true, vidx) : (size_t)-1);
           else if (k != key_traits::DELT &&
-              this->eqfn (key_traits().get (k), key))
+              this->eqfn (key_traits::get (k), key))
             return (vidx);
         }
     }
@@ -355,7 +297,7 @@ struct hash_table
 
   size_t _Gprobe (uintptr_t key, detail::ht_vector *vp)
     {
-      size_t code = this->hashfn (key_traits().get (key));
+      size_t code = this->hashfn (key_traits::get (key));
       size_t entries = vp->entries;
       size_t idx = code % entries;
       size_t vidx = detail::table_idx (idx);
@@ -430,14 +372,14 @@ struct hash_table
       cs_guard g;
       uintptr_t val = this->_Find (key);
       return (val == val_traits::DELT ? optional<ValT> () :
-        optional<ValT> (val_traits().get (val)));
+        optional<ValT> (val_traits::get (val)));
     }
 
   ValT find (const KeyT& key, const ValT& dfl) const
     {
       cs_guard g;
       uintptr_t val = this->_Find (key);
-      return (val == val_traits::DELT ? dfl : val_traits().get (val));
+      return (val == val_traits::DELT ? dfl : val_traits::get (val));
     }
 
   bool contains (const KeyT& key) const
@@ -477,9 +419,9 @@ struct hash_table
                   if (v == tmp ||
                       xatomic_cas_bool (ep + idx + 1, tmp, v))
                     {
-                      key_traits().free (k);
+                      key_traits::free (k);
                       if (v != tmp)
-                        val_traits().destroy (tmp);
+                        val_traits::destroy (tmp);
                       return (found);
                     }
 
@@ -520,18 +462,18 @@ struct hash_table
 
   bool insert (const KeyT& key, const ValT& val)
     {
-      uintptr_t k = key_traits().make (key), v = val_traits::XBIT;
+      uintptr_t k = key_traits::make (key), v = val_traits::XBIT;
 
       try
         {
-          v = val_traits().make (val);
+          v = val_traits::make (val);
           return (this->_Upsert (k, key, detail::ht_inserter (v)));
         }
       catch (...)
         {
-          key_traits().free (k);
+          key_traits::free (k);
           if (v != val_traits::XBIT)
-            val_traits().free (v);
+            val_traits::free (v);
 
           throw;
         }
@@ -549,28 +491,28 @@ struct hash_table
         { // Call function with default-constructed value and arguments.
           auto tmp = (typename Vtraits::value_type ());
           auto&& rv = this->fct (tmp, args...);
-          return (Vtraits().make (rv));
+          return (Vtraits::make (rv));
         }
 
       template <class ...Args>
       uintptr_t call1 (uintptr_t x, Args ...args)
         { // Call function with stored value and arguments.
-          auto&& tmp = Vtraits().get (x);
+          auto&& tmp = Vtraits::get (x);
           auto&& rv = this->fct (tmp, args...);
           return (Vtraits::XBIT == 1 &&
-            &rv == &tmp ? x : Vtraits().make (rv));
+            &rv == &tmp ? x : Vtraits::make (rv));
         }
 
       void free (uintptr_t x)
         {
-          Vtraits().free (x);
+          Vtraits::free (x);
         }
     };
 
   template <class Fn, class ...Args>
   bool update (const KeyT& key, Fn f, Args... args)
     {
-      uintptr_t k = key_traits().make (key);
+      uintptr_t k = key_traits::make (key);
 
       try
         {
@@ -579,7 +521,7 @@ struct hash_table
         }
       catch (...)
         {
-          key_traits().free (k);
+          key_traits::free (k);
           throw;
         }
     }
@@ -611,11 +553,11 @@ struct hash_table
               this->vec->nelems.fetch_sub (1, std::memory_order_acq_rel);
               // Safe to set the key without atomic ops.
               ep[idx] = key_traits::DELT;
-              key_traits().destroy (oldk);
-              val_traits().destroy (oldv);
+              key_traits::destroy (oldk);
+              val_traits::destroy (oldv);
 
               if (outp)
-                *outp = val_traits().get (oldv);
+                *outp = val_traits::get (oldv);
 
               return (true);
             }
@@ -648,12 +590,12 @@ struct hash_table
 
       KeyT key () const
         {
-          return (key_traits().get (this->c_key));
+          return (key_traits::get (this->c_key));
         }
 
       ValT value () const
         {
-          return (val_traits().get (this->c_val));
+          return (val_traits::get (this->c_val));
         }
 
       iterator& operator++ ()
@@ -709,8 +651,8 @@ struct hash_table
           uintptr_t v = xatomic_or (&prev->data[i], val_traits::XBIT);
           if (v != val_traits::FREE && v != val_traits::DELT)
             {
-              key_traits().destroy (prev->data[i - 1]);
-              val_traits().destroy (v);
+              key_traits::destroy (prev->data[i - 1]);
+              val_traits::destroy (v);
             }
         }
 
@@ -793,8 +735,8 @@ struct hash_table
           if (k == key_traits::FREE || k == key_traits::DELT)
             continue;
 
-          key_traits().free (k);
-          val_traits().free (this->vec->data[i + 1] & ~val_traits::XBIT);
+          key_traits::free (k);
+          val_traits::free (this->vec->data[i + 1] & ~val_traits::XBIT);
         }
 
       this->vec->safe_destroy ();
