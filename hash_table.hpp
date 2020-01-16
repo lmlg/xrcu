@@ -740,6 +740,7 @@ struct hash_table
         }
 
       this->vec->safe_destroy ();
+      this->vec = nullptr;
     }
 };
 

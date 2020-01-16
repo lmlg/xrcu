@@ -5,6 +5,7 @@
 #include "optional.hpp"
 #include "xatomic.hpp"
 #include "utils.hpp"
+#include <cstddef>
 #include <atomic>
 #include <type_traits>
 
@@ -78,7 +79,7 @@ struct alignas (uintptr_t) q_data : public finalizable
           else if (xv == empty &&
               xatomic_cas_bool (&this->ptrs[curr], xv, val))
             {
-              this->wr_idx.add_fetch (1, std::memory_order_relaxed);
+              this->wr_idx.fetch_add (1, std::memory_order_relaxed);
               return (true);
             }
 
@@ -99,7 +100,7 @@ struct alignas (uintptr_t) q_data : public finalizable
             return (xbit);
           else if (xatomic_cas_bool (&this->ptrs[curr], rv, dfl))
             {
-              this->rd_idx.add_fetch (1, std::memory_order_relaxed);
+              this->rd_idx.fetch_add (1, std::memory_order_relaxed);
               return (rv);
             }
 
@@ -180,6 +181,7 @@ struct queue
 
       iterator& operator++ ()
         {
+          ++this->idx;
           this->_Adv ();
           return (*this);
         }
@@ -229,7 +231,7 @@ struct queue
       detail::q_data *nq = nullptr;
       try
         {
-          nq = detail::q_data::make (qdp->cap * 2);
+          nq = detail::q_data::make (qdp->cap * 2, val_traits::FREE);
         }
       catch (...)
         {
@@ -238,13 +240,14 @@ struct queue
         }
 
       uintptr_t *outp = nq->ptrs;
-      for (*outp++ = prev; ix < qdp->cap + 1; ++ix)
-        *outp++ = xatomic_or (&this->qdp[ix], val_traits::XBIT);
+      for (*outp++ = prev; ++ix < qdp->cap; )
+        *outp++ = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
 
       *outp++ = elem;
-      nq->wr_idx.store (outp - nq->ptrs - 1, std::memory_order_relaxed);
+      nq->wr_idx.store (outp - nq->ptrs, std::memory_order_relaxed);
       finalize (qdp);
-      this->qdp = nq;
+
+      this->impl = nq;
       std::atomic_thread_fence (std::memory_order_release);
       return (true);
     }
@@ -256,7 +259,8 @@ struct queue
       uintptr_t val = val_traits::make (elem);
 
       while (true)
-        if (qdp->push (val, val_traits::XBIT) || this->_Rearm (val, qdp))
+        if (qdp->push (val, val_traits::XBIT, val_traits::FREE) ||
+            this->_Rearm (val, qdp))
           break;
     }
 
@@ -336,7 +340,17 @@ struct queue
 
   ~queue ()
     {
-      finalize (this->impl);
+      if (!this->impl)
+        return;
+
+      for (size_t i = this->impl->_Rdidx (); i < this->impl->cap; ++i)
+        {
+          uintptr_t val = this->impl->ptrs[i] & ~val_traits::XBIT;
+          if (val != val_traits::FREE && val != val_traits::DELT)
+            val_traits::free (val);
+        }
+
+      this->impl->safe_destroy ();
       this->impl = nullptr;
     }
 };

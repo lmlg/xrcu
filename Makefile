@@ -2,7 +2,7 @@ STATIC_LIBS = libxrcu.a
 SHARED_LIBS = libxrcu.so
 
 HEADERS = xrcu.hpp stack.hpp hash_table.hpp skip_list.hpp   \
-          xatomic.hpp lwlock.hpp optional.hpp
+          xatomic.hpp lwlock.hpp optional.hpp queue.hpp
 
 OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o
 LOBJS = $(OBJS:.o=.lo)
