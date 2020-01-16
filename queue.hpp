@@ -45,12 +45,6 @@ static inline uint64_t roundup (uint64_t x)
   return (x + 1);
 }
 
-static inline void
-destroy (T *ptr)
-{
-  ptr->~T ();
-}
-
 struct alignas (uintptr_t) q_data : public finalizable
 {
   uintptr_t *ptrs;
@@ -101,7 +95,7 @@ struct alignas (uintptr_t) q_data : public finalizable
             return (dfl);
 
           uintptr_t rv = this->ptrs[curr];
-          if ((rv & xbit) != 0)
+          if ((rv & xbit) != 0 || rv == dfl)
             return (xbit);
           else if (xatomic_cas_bool (&this->ptrs[curr], rv, dfl))
             {
@@ -135,31 +129,6 @@ struct alignas (uintptr_t) q_data : public finalizable
   void safe_destroy ();
 };
 
-struct q_data_guard
-{
-  q_data *qdp;
-  size_t statrt;
-  uintptr_t bit;
-
-  q_data_guard (q_data *q, size_t s, uintptr_t b) : qdp (q), start (s), bit (b)
-    {
-    }
-
-  void disable ()
-    {
-      this->qdp = nullptr;
-    }
-
-  ~q_data_guard ()
-    {
-      if (!this->qdp)
-        return;
-
-      for (size_t i = this->start; i < this->qdp->cap + 1; ++i)
-        xatomic_and (this->qdp->ptrs[i], ~this->bit);
-    }
-};
-
 } // namespace detail
 
 template <class T>
@@ -186,7 +155,8 @@ struct queue
 
       iterator (detail::q_data *q, size_t s) : qdp (q), idx (s)
         {
-          this->_Adv ();
+          if (this->qdp)
+            this->_Adv ();
         }
 
       void _Adv ()
@@ -232,6 +202,8 @@ struct queue
         }
     };
 
+  typedef iterator const_iterator;
+
   queue ()
     {
       this->_Init (8);
@@ -242,17 +214,30 @@ struct queue
       size_t ix = qdp->_Rdidx ();
       uintptr_t prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
       if (prev & val_traits::XBIT)
-        {
-          while (qdp == this->impl)
-            xatomic_spin_nop ();
+        while (true)
+          {
+            if (qdp != this->impl)
+              return (false);
+            else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
+              /* The thread rearming the queue raised an exception.
+               * Recurse and see if we can pick up the slack. */
+              return (this->_Rearm (elem, qdp));
 
-          return (false);
+            xatomic_spin_nop ();
+          }
+
+      detail::q_data *nq = nullptr;
+      try
+        {
+          nq = detail::q_data::make (qdp->cap * 2);
+        }
+      catch (...)
+        {
+          xatomic_and (&qdp->ptrs[ix], ~val_traits::XBIT);
+          throw;
         }
 
-      detail::q_data_guard g { qdp, ix };
-      auto nq = detail::q_data::make (qdp->cap * 2);
       uintptr_t *outp = nq->ptrs;
-
       for (*outp++ = prev; ix < qdp->cap + 1; ++ix)
         *outp++ = xatomic_or (&this->qdp[ix], val_traits::XBIT);
 
@@ -271,13 +256,8 @@ struct queue
       uintptr_t val = val_traits::make (elem);
 
       while (true)
-        {
-          if (qdp->push (val, val_traits::XBIT) || this->_Rearm (val, qdp))
-            break;
-
-          while (qdp == this->impl)
-            xatomic_spin_nop ();
-        }
+        if (qdp->push (val, val_traits::XBIT) || this->_Rearm (val, qdp))
+          break;
     }
 
   optional<T> pop ()
@@ -331,6 +311,33 @@ struct queue
     {
       cs_guard g;
       return (this->impl->size ());
+    }
+
+  iterator begin () const
+    {
+      cs_guard g;
+      return (iterator (this->impl, this->impl->_Rdidx ()));
+    }
+
+  iterator end () const
+    {
+      return (iterator (nullptr, 0));
+    }
+
+  const_iterator cbegin () const
+    {
+      return (this->begin ());
+    }
+
+  const_iterator cend () const
+    {
+      return (this->end ());
+    }
+
+  ~queue ()
+    {
+      finalize (this->impl);
+      this->impl = nullptr;
     }
 };
 

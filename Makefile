@@ -4,7 +4,7 @@ SHARED_LIBS = libxrcu.so
 HEADERS = xrcu.hpp stack.hpp hash_table.hpp skip_list.hpp   \
           xatomic.hpp lwlock.hpp optional.hpp
 
-OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o
+OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o
 LOBJS = $(OBJS:.o=.lo)
 
 TEST_OBJS = $(LOBJS)
