@@ -135,7 +135,7 @@ struct alignas (uintptr_t) q_data : public finalizable
 template <class T>
 struct queue
 {
-  detail::q_data *impl;
+  std::atomic<detail::q_data *> impl;
 
   typedef detail::wrapped_traits<(sizeof (T) < sizeof (uintptr_t) &&
       std::is_integral<T>::value) || (std::is_pointer<T>::value &&
@@ -144,6 +144,21 @@ struct queue
   void _Init (size_t size)
     {
       this->impl = detail::q_data::make (size, val_traits::FREE);
+    }
+
+  detail::q_data* _Data ()
+    {
+      return (this->impl.load (std::memory_order_relaxed));
+    }
+
+  const detail::q_data* _Data () const
+    {
+      return (this->impl.load (std::memory_order_relaxed));
+    }
+
+  void _Set_data (detail::q_data *qdp)
+    {
+      this->impl.store (qdp, std::memory_order_relaxed);
     }
 
   struct iterator : public cs_guard
@@ -229,6 +244,8 @@ struct queue
           _Destroy (qdp);
           throw;
         }
+
+      this->_Set_data (qdp);
     }
 
   template <class It>
@@ -256,7 +273,7 @@ struct queue
           throw;
         }
 
-      this->impl = qdp;
+      this->_Set_data (qdp);
     }
 
   template <class T1, class T2>
@@ -271,8 +288,8 @@ struct queue
 
   queue (queue<T>&& right)
     {
-      this->impl = right.impl;
-      right.impl = nullptr;
+      this->_Set_data (right._Data ());
+      right._Set_data (nullptr);
     }
 
   bool _Rearm (uintptr_t elem, detail::q_data *qdp)
@@ -282,7 +299,7 @@ struct queue
       if (prev & val_traits::XBIT)
         while (true)
           {
-            if (qdp != this->impl)
+            if (qdp != this->_Data ())
               return (false);
             else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
               /* The thread rearming the queue raised an exception.
@@ -311,7 +328,7 @@ struct queue
       nq->wr_idx.store (outp - nq->ptrs, std::memory_order_relaxed);
       finalize (qdp);
 
-      this->impl = nq;
+      this->_Set_data (nq);
       std::atomic_thread_fence (std::memory_order_release);
       return (true);
     }
@@ -319,23 +336,25 @@ struct queue
   void push (const T& elem)
     {
       cs_guard g;
-      auto qdp = this->impl;
       uintptr_t val = val_traits::make (elem);
 
       while (true)
-        if (qdp->push (val, val_traits::XBIT, val_traits::FREE) ||
-            this->_Rearm (val, qdp))
-          break;
+        {
+          auto qdp = this->_Data ();
+          if (qdp->push (val, val_traits::XBIT, val_traits::FREE) ||
+              this->_Rearm (val, qdp))
+            break;
+        }
     }
 
   optional<T> pop ()
     {
       cs_guard g;
-      auto qdp = this->impl;
-
       while (true)
         {
+          auto qdp = this->_Data ();
           uintptr_t val = qdp->pop (val_traits::XBIT, val_traits::DELT);
+
           if (val == val_traits::DELT)
             // Queue is empty.
             return (optional<T> ());
@@ -346,17 +365,15 @@ struct queue
               return (rv);
             }
 
-          while (qdp == this->impl)
+          while (qdp == this->_Data ())
             xatomic_spin_nop ();
-
-          qdp = this->impl;
         }
     }
 
   optional<T> front () const
     {
       cs_guard g;
-      uintptr_t rv = this->impl->front () & ~val_traits::XBIT;
+      uintptr_t rv = this->_Data()->front () & ~val_traits::XBIT;
 
       if (rv == val_traits::FREE)
         return (optional<T> ());
@@ -367,7 +384,7 @@ struct queue
   optional<T> back () const
     {
       cs_guard g;
-      uintptr_t rv = this->impl->back () & ~val_traits::XBIT;
+      uintptr_t rv = this->_Data()->back () & ~val_traits::XBIT;
 
       if (rv == val_traits::FREE)
         return (optional<T> ());
@@ -378,13 +395,13 @@ struct queue
   size_t size () const
     {
       cs_guard g;
-      return (this->impl->size ());
+      return (this->_Data()->size ());
     }
 
   iterator begin () const
     {
       cs_guard g;
-      return (iterator (this->impl, this->impl->_Rdidx ()));
+      return (iterator (this->_Data (), this->_Data()->_Rdidx ()));
     }
 
   iterator end () const
@@ -416,11 +433,12 @@ struct queue
 
   ~queue ()
     {
-      if (!this->impl)
+      auto qdp = this->_Data ();
+      if (!qdp)
         return;
 
-      _Destroy (this->impl);
-      this->impl = nullptr;
+      _Destroy (qdp);
+      this->_Set_data (nullptr);
     }
 };
 
