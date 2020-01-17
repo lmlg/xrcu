@@ -25,7 +25,7 @@ static constexpr size_t min_size (size_t sz)
   return (sz < 2 ? 2 : sz);
 }
 
-static inline uint32_t roundup (uint32_t x)
+static inline uint32_t upsize (uint32_t x)
 {
   x |= x >> 1;
   x |= x >> 2;
@@ -35,7 +35,7 @@ static inline uint32_t roundup (uint32_t x)
   return (x + 1);
 }
 
-static inline uint64_t roundup (uint64_t x)
+static inline uint64_t upsize (uint64_t x)
 {
   x |= x >> 1;
   x |= x >> 2;
@@ -211,6 +211,70 @@ struct queue
       this->_Init (8);
     }
 
+  template <class T1, class T2>
+  void _Init (T1 n, const T2& val, std::true_type)
+    {
+      auto qdp = detail::q_data::make (detail::upsize (n), val_traits::FREE);
+
+      try
+        {
+          for (size_t i = 0; i < n; )
+            {
+              qdp->ptrs[i] = val_traits::make (val);
+              qdp->wr_idx.store (++i, std::memory_order_relaxed);
+            }
+        }
+      catch (...)
+        {
+          _Destroy (qdp);
+          throw;
+        }
+    }
+
+  template <class It>
+  void _Init (It first, It last, std::false_type)
+    {
+      auto qdp = detail::q_data::make (8, val_traits::FREE);
+      try
+        {
+          for (size_t i = 0; first != last; ++first)
+            {
+              qdp->ptrs[i] = val_traits::make (*first);
+              qdp->wr_idx.store (++i, std::memory_order_relaxed);
+
+              if (i == qdp->cap)
+                {
+                  auto q2 = detail::q_data::make (i * 2, val_traits::FREE);
+                  qdp->safe_destroy ();
+                  qdp = q2;
+                }
+            }
+        }
+      catch (...)
+        {
+          _Destroy (qdp);
+          throw;
+        }
+
+      this->impl = qdp;
+    }
+
+  template <class T1, class T2>
+  queue (T1 first, T2 last)
+    {
+      this->_Init (first, last, typename std::is_integral<T1>::type ());
+    }
+
+  queue (const queue<T>& right) : queue (right.begin (), right.end ())
+    {
+    }
+
+  queue (queue<T>&& right)
+    {
+      this->impl = right.impl;
+      right.impl = nullptr;
+    }
+
   bool _Rearm (uintptr_t elem, detail::q_data *qdp)
     {
       size_t ix = qdp->_Rdidx ();
@@ -338,19 +402,24 @@ struct queue
       return (this->end ());
     }
 
+  static void _Destroy (detail::q_data *qdp)
+    {
+      for (size_t i = qdp->_Rdidx (); i < qdp->cap; ++i)
+        {
+          uintptr_t val = qdp->ptrs[i] & ~val_traits::XBIT;
+          if (val != val_traits::FREE && val != val_traits::DELT)
+            val_traits::free (val);
+        }
+
+      qdp->safe_destroy ();
+    }
+
   ~queue ()
     {
       if (!this->impl)
         return;
 
-      for (size_t i = this->impl->_Rdidx (); i < this->impl->cap; ++i)
-        {
-          uintptr_t val = this->impl->ptrs[i] & ~val_traits::XBIT;
-          if (val != val_traits::FREE && val != val_traits::DELT)
-            val_traits::free (val);
-        }
-
-      this->impl->safe_destroy ();
+      _Destroy (this->impl);
       this->impl = nullptr;
     }
 };
