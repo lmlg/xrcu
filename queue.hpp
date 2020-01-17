@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <atomic>
 #include <type_traits>
+#include <initializer_list>
 
 namespace std
 {
@@ -290,6 +291,10 @@ struct queue
     {
       this->_Set_data (right._Data ());
       right._Set_data (nullptr);
+    }
+
+  queue (std::initializer_list<T> lst) : queue (lst.begin (), lst.end ())
+    {
     }
 
   bool _Rearm (uintptr_t elem, detail::q_data *qdp)
