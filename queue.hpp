@@ -136,11 +136,11 @@ struct alignas (uintptr_t) q_data : public finalizable
 template <class T>
 struct queue
 {
-  std::atomic<detail::q_data *> impl;
-
   typedef detail::wrapped_traits<(sizeof (T) < sizeof (uintptr_t) &&
       std::is_integral<T>::value) || (std::is_pointer<T>::value &&
       alignof (T) >= 8), T> val_traits;
+
+  std::atomic<detail::q_data *> impl;
 
   void _Init (size_t size)
     {
@@ -301,6 +301,7 @@ struct queue
     {
       size_t ix = qdp->_Rdidx ();
       uintptr_t prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
+
       if (prev & val_traits::XBIT)
         while (true)
           {
@@ -355,6 +356,7 @@ struct queue
   optional<T> pop ()
     {
       cs_guard g;
+
       while (true)
         {
           auto qdp = this->_Data ();
@@ -422,6 +424,28 @@ struct queue
   const_iterator cend () const
     {
       return (this->end ());
+    }
+
+  void clear ()
+    {
+      auto nq = detail::q_data::make (8, val_traits::FREE);
+      auto prev = this->impl.exchange (nq, std::memory_order_acq_rel);
+      finalize (prev);
+    }
+
+  template <class T1, class T2>
+  void assign (T1 first, T2 last)
+    {
+      auto tmp = queue<T> (first, last);
+      auto prev = this->impl.exchange (tmp._Data (),
+                                       std::memory_order_acq_rel);
+      finalize (prev);
+      tmp.impl.store (nullptr, std::memory_order_relaxed);
+    }
+
+  void assign (std::initializer_list<T> lst)
+    {
+      this->assign (lst.begin (), lst.end ());
     }
 
   static void _Destroy (detail::q_data *qdp)
