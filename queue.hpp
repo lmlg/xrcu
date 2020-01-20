@@ -299,21 +299,33 @@ struct queue
 
   bool _Rearm (uintptr_t elem, detail::q_data *qdp)
     {
-      size_t ix = qdp->_Rdidx ();
-      uintptr_t prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
+      size_t ix;
+      uintptr_t prev;
 
-      if (prev & val_traits::XBIT)
-        while (true)
-          {
-            if (qdp != this->_Data ())
-              return (false);
-            else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
-              /* The thread rearming the queue raised an exception.
-               * Recurse and see if we can pick up the slack. */
-              return (this->_Rearm (elem, qdp));
+      while (true)
+        {
+          ix = qdp->_Rdidx ();
+          prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
 
-            xatomic_spin_nop ();
-          }
+          if (prev == val_traits::DELT)
+            // Another thread deleted this entry - Retry.
+            continue;
+          else if ((prev & val_traits::XBIT) == 0)
+            break;
+
+          while (true)
+            {
+              if (qdp != this->_Data ())
+                // Impl pointer has been installed - Return.
+                return (false);
+              else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
+                /* The thread rearming the queue raised an exception.
+                 * Recurse and see if we can pick up the slack. */
+                return (this->_Rearm (elem, qdp));
+
+              xatomic_spin_nop ();
+            }
+        }
 
       detail::q_data *nq = nullptr;
       try
@@ -334,8 +346,7 @@ struct queue
       nq->wr_idx.store (outp - nq->ptrs, std::memory_order_relaxed);
       finalize (qdp);
 
-      this->_Set_data (nq);
-      std::atomic_thread_fence (std::memory_order_release);
+      this->impl.store (nq, std::memory_order_release);
       return (true);
     }
  
@@ -426,21 +437,56 @@ struct queue
       return (this->end ());
     }
 
+  void _Assign (detail::q_data *nq)
+    {
+      while (true)
+        {
+          auto qdp = this->_Data ();
+          size_t ix = qdp->_Rdidx ();
+          uintptr_t prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
+
+          if (prev == val_traits::DELT)
+            continue;
+          else if ((prev & val_traits::XBIT) == 0)
+            {
+              if (prev != val_traits::FREE)
+                val_traits::destroy (prev);
+
+              for (; ix < qdp->cap; ++ix)
+                {
+                  prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
+                  if (prev != val_traits::FREE)
+                    val_traits::destroy (prev);
+                }
+
+              finalize (qdp);
+              this->_Set_data (nq);
+              return;
+            }
+
+          while (true)
+            {
+              if (qdp != this->_Data ())
+                break;
+              else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
+                break;
+
+              xatomic_spin_nop ();
+            }
+        }
+    }
+
   void clear ()
     {
-      auto nq = detail::q_data::make (8, val_traits::FREE);
-      auto prev = this->impl.exchange (nq, std::memory_order_acq_rel);
-      finalize (prev);
+      this->_Assign (detail::q_data::make (8, val_traits::FREE));
     }
 
   template <class T1, class T2>
   void assign (T1 first, T2 last)
     {
       auto tmp = queue<T> (first, last);
-      auto prev = this->impl.exchange (tmp._Data (),
-                                       std::memory_order_acq_rel);
-      finalize (prev);
-      tmp.impl.store (nullptr, std::memory_order_relaxed);
+      this->_Assign (tmp._Data ());
+      tmp._Set_data (nullptr);
     }
 
   void assign (std::initializer_list<T> lst)
