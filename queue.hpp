@@ -263,6 +263,9 @@ struct queue
               if (i == qdp->cap)
                 {
                   auto q2 = detail::q_data::make (i * 2, val_traits::FREE);
+                  for (size_t j = 0; j < i; ++j)
+                    q2->ptrs[j] = qdp->ptrs[j];
+
                   qdp->safe_destroy ();
                   qdp = q2;
                 }
@@ -346,7 +349,7 @@ struct queue
       nq->wr_idx.store (outp - nq->ptrs, std::memory_order_relaxed);
       finalize (qdp);
 
-      this->impl.store (nq, std::memory_order_release);
+      this->_Set_data (nq);
       return (true);
     }
  
