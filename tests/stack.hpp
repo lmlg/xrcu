@@ -43,7 +43,7 @@ void test_single_threaded ()
     ASSERT (s2 == stk);
 
     stack_t s3 { std::move (s2) };
-    ASSERT (s2 != s3);
+    ASSERT (stk == s3);
   }
 
   stack_t stk;
