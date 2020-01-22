@@ -8,18 +8,18 @@ namespace xrcu
 namespace detail
 {
 
-static stack_node_base* const NODE_SPIN = (stack_node_base *)1;
+static const uintptr_t SPIN_BIT = 1;
+
+static inline bool
+node_spinning_p (const stack_node_base *np)
+{
+  return (((uintptr_t)np) & SPIN_BIT);
+}
 
 stack_node_base* stack_base::root () const
 {
-  while (true)
-    {
-      auto ret = this->rnode.load (std::memory_order_relaxed);
-      if (ret != NODE_SPIN)
-        return (ret);
-
-      xatomic_spin_nop ();
-    }
+  uintptr_t ret = (uintptr_t)this->rnode.load (std::memory_order_relaxed);
+  return (((stack_node_base *)(ret & ~SPIN_BIT)));
 }
 
 void stack_base::push_node (stack_node_base *nodep)
@@ -28,7 +28,7 @@ void stack_base::push_node (stack_node_base *nodep)
     {
       nodep->next = this->rnode.load (std::memory_order_relaxed);
 
-      if (nodep->next != NODE_SPIN &&
+      if (!node_spinning_p (nodep->next) &&
           this->rnode.compare_exchange_weak (nodep->next, nodep,
             std::memory_order_acq_rel, std::memory_order_relaxed))
         {
@@ -46,31 +46,28 @@ void stack_base::push_nodes (stack_node_base *nodep,
   while (true)
     {
       auto tmp = this->rnode.load (std::memory_order_relaxed);
-      if (tmp == NODE_SPIN)
+      if (!node_spinning_p (tmp))
         {
-          xatomic_spin_nop ();
-          continue;
+          *outp = tmp;
+          if (this->rnode.compare_exchange_weak (tmp, nodep,
+              std::memory_order_acq_rel, std::memory_order_relaxed))
+            {
+              this->size.fetch_add (cnt, std::memory_order_relaxed);
+              break;
+            }
         }
 
-     *outp = tmp;
-     if (this->rnode.compare_exchange_weak (tmp, nodep,
-         std::memory_order_acq_rel, std::memory_order_relaxed))
-       {
-         this->size.fetch_add (cnt, std::memory_order_relaxed);
-         break;
-       }
+      xatomic_spin_nop ();
     }
 }
 
 stack_node_base* stack_base::pop_node ()
 {
-  cs_guard g;
-
   while (true)
     {
       auto np = this->rnode.load (std::memory_order_relaxed);
 
-      if (np == NODE_SPIN)
+      if (node_spinning_p (np))
         ;
       else if (np == nullptr)
         return (np);
@@ -91,8 +88,10 @@ set_spin (std::atomic<stack_node_base *>& rn)
   while (true)
     {
       stack_node_base *tmp = rn.load (std::memory_order_relaxed);
-      if (tmp != NODE_SPIN && rn.compare_exchange_weak (tmp, NODE_SPIN,
-          std::memory_order_acq_rel, std::memory_order_release))
+      if (!node_spinning_p (tmp) &&
+          rn.compare_exchange_weak (tmp,
+            (stack_node_base *)((uintptr_t)tmp | SPIN_BIT),
+            std::memory_order_acq_rel, std::memory_order_relaxed))
         return (tmp);
 
       xatomic_spin_nop ();

@@ -419,6 +419,16 @@ struct queue
       return (this->_Data()->size ());
     }
 
+  bool empty () const
+    {
+      return (this->size () == 0);
+    }
+
+  size_t max_size () const
+    {
+      return (~(size_t)0);
+    }
+
   iterator begin () const
     {
       cs_guard g;
@@ -481,12 +491,14 @@ struct queue
 
   void clear ()
     {
+      cs_guard g;
       this->_Assign (detail::q_data::make (8, val_traits::FREE));
     }
 
   template <class T1, class T2>
   void assign (T1 first, T2 last)
     {
+      cs_guard g;
       auto tmp = queue<T> (first, last);
       this->_Assign (tmp._Data ());
       tmp._Set_data (nullptr);
@@ -495,6 +507,72 @@ struct queue
   void assign (std::initializer_list<T> lst)
     {
       this->assign (lst.begin (), lst.end ());
+    }
+
+  queue<T>& operator= (const queue<T>& right)
+    {
+      if (this == &right)
+        return (*this);
+
+      this->assign (right.begin (), right.end ());
+      return (*this);
+    }
+
+  bool operator== (const queue<T>& right) const
+    {
+      auto x1 = this->cbegin (), x2 = this->cend ();
+      auto y1 = right.cbegin (), y2 = right.cend ();
+
+      for (; x1 != x2 && y1 != y2; ++x1, ++y1)
+        if (*x1 != *x2)
+          return (false);
+
+      return (x1 == x2 && y1 == y2);
+    }
+
+  bool operator!= (const queue<T>& right) const
+    {
+      return (!(*this == right));
+    }
+
+  bool operator< (const queue<T>& right) const
+    {
+      auto x1 = this->cbegin (), x2 = this->cend ();
+      auto y1 = right.cbegin (), y2 = right.cend ();
+
+      for (; x1 != x2; ++x1, ++y1)
+        {
+          if (y1 == y2 || *y1 < *x1)
+            return (false);
+          else if (*x1 < *y1)
+            return (true);
+        }
+
+      return (y1 != y2);
+    }
+
+  bool operator> (const queue<T>& right) const
+    {
+      return (right < *this);
+    }
+
+  bool operator<= (const queue<T>& right) const
+    {
+      return (!(right < *this));
+    }
+
+  bool operator>= (const queue<T>& right) const
+    {
+      return (!(*this < right));
+    }
+
+  queue<T>& operator= (queue<T>&& right)
+    {
+      auto prev = this->impl.exchange (right._Data (),
+                                       std::memory_order_acq_rel);
+      finalize (prev);
+      right._Set_data (nullptr);
+      return (*this);
     }
 
   static void _Destroy (detail::q_data *qdp)

@@ -7,7 +7,8 @@
 
 namespace stk_test
 {
-  typedef xrcu::stack<std::string> stack_t;
+
+typedef xrcu::stack<std::string> stack_t;
 
 void test_single_threaded ()
 {

@@ -62,6 +62,9 @@ struct stack_base
   void swap (stack_base& right);
 };
 
+static_assert (alignof (stack_base) > 1,
+               "unsupported alignment for stack base");
+
 struct stack_iter_base : public cs_guard
 {
   stack_node_base *runp;
@@ -100,13 +103,11 @@ struct stack_iter_base : public cs_guard
 template <class T>
 struct stack
 {
-  struct _Stkbase : public finalizable
+  struct _Stkbase : public detail::stack_base, finalizable
     {
-      detail::stack_base sb;
-
       _Stkbase ()
         {
-          this->sb.reset (nullptr, 0);
+          this->reset (nullptr, 0);
         }
 
       static void
@@ -122,8 +123,8 @@ struct stack
 
       ~_Stkbase ()
         {
-          clean_nodes (this->sb.root ());
-          this->sb.reset (nullptr, 0);
+          clean_nodes (this->root ());
+          this->reset (nullptr, 0);
         }
     };
 
@@ -167,7 +168,7 @@ struct stack
           throw;
         }
 
-      this->_Base()->sb.reset (runp, len);
+      this->_Base()->reset (runp, len);
     }
 
   template <class T1, class T2>
@@ -189,7 +190,7 @@ struct stack
           throw;
         }
 
-      this->_Base()->sb.reset (runp, n);
+      this->_Base()->reset (runp, n);
     }
 
   void _Init_base ()
@@ -226,12 +227,12 @@ struct stack
 
   void push (const T& value)
     {
-      this->_Base()->sb.push_node (new node_type (value));
+      this->_Base()->push_node (new node_type (value));
     }
 
   void push (T&& value)
     {
-      this->_Base()->sb.push_node (new node_type (std::move (value)));
+      this->_Base()->push_node (new node_type (std::move (value)));
     }
 
   template <class Iter>
@@ -254,7 +255,7 @@ struct stack
               *outp = tmp, outp = &tmp->next;
             }
 
-          this->_Base()->sb.push_nodes (np, outp, cnt);
+          this->_Base()->push_nodes (np, outp, cnt);
         }
       catch (...)
         {
@@ -283,7 +284,7 @@ struct stack
               *outp = tmp, outp = &tmp->next;
             }
 
-          this->_Base()->sb.push_nodes (np, outp, cnt);
+          this->_Base()->push_nodes (np, outp, cnt);
         }
       catch (...)
         {
@@ -301,13 +302,13 @@ struct stack
   template <class ...Args>
   void emplace (Args&& ...args)
     {
-      this->_Base()->sb.push_node (new node_type (std::forward<Args>(args)...));
+      this->_Base()->push_node (new node_type (std::forward<Args>(args)...));
     }
 
   optional<T> pop ()
     {
       cs_guard g;
-      auto node = (node_type *)this->_Base()->sb.pop_node ();
+      auto node = (node_type *)this->_Base()->pop_node ();
 
       if (!node)
         return (optional<T> ());
@@ -320,7 +321,7 @@ struct stack
   optional<T> top ()
     {
       cs_guard g;
-      auto node = (node_type *)this->_Base()->sb.root ();
+      auto node = (node_type *)this->_Base()->root ();
       return (node ? optional<T> { node->value } : optional<T> ());
     }
 
@@ -362,7 +363,7 @@ struct stack
 
   iterator begin ()
     {
-      return (iterator (this->_Base()->sb.root ()));
+      return (iterator (this->_Base()->root ()));
     }
 
   iterator end ()
@@ -372,7 +373,7 @@ struct stack
 
   const_iterator cbegin () const
     {
-      return (const_iterator (this->_Base()->sb.root ()));
+      return (const_iterator (this->_Base()->root ()));
     }
 
   const_iterator cend () const
@@ -392,7 +393,7 @@ struct stack
 
   size_t size () const
     {
-      return (this->_Base()->sb.size.load (std::memory_order_relaxed));
+      return (this->_Base()->size.load (std::memory_order_relaxed));
     }
 
   size_t max_size () const
@@ -402,7 +403,7 @@ struct stack
 
   bool empty () const
     {
-      return (this->_Base()->sb.empty ());
+      return (this->_Base()->empty ());
     }
 
   void swap (stack<T>& right)
@@ -410,7 +411,7 @@ struct stack
       cs_guard g;
 
       if (this != &right)
-        this->_Base()->sb.swap (right._Base()->sb);
+        this->_Base()->swap (*right._Base());
     }
 
   stack<T>& operator= (const stack<T>& right)
@@ -425,9 +426,8 @@ struct stack
 
   stack<T>& operator= (stack<T>&& right)
     {
-      auto prev = this->basep.exchange (right._Base (),
-                                        std::memory_order_acq_rel);
-      finalize (prev);
+      this->swap (right);
+      finalize (right._Base ());
       right.basep.store (nullptr, std::memory_order_relaxed);
       return (*this);
     }
