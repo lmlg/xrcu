@@ -67,7 +67,8 @@ struct wrapped_traits<false, T>
       delete (type_wrapper<T> *)addr;
     }
 };
-}
+
+} // namespace detail
 
 } // namespace xrcu
 

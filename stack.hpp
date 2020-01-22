@@ -22,48 +22,23 @@ namespace detail
 struct stack_node_base
 {
   stack_node_base *next = nullptr;
+  typedef std::atomic<stack_node_base *> ptr_type;
+
+  static stack_node_base* root (const ptr_type& head);
+
+  static void push (ptr_type& head, stack_node_base *nodep);
+
+  static void push (ptr_type& head,
+    stack_node_base *nodep, stack_node_base **outp);
+
+  static stack_node_base* pop (ptr_type& head);
+
+  static void swap (ptr_type& h1, ptr_type& h2);
+
+  static stack_node_base* clear (ptr_type& head);
+
+  static size_t size (const ptr_type& head);
 };
-
-template <class T>
-struct stack_node : public stack_node_base, finalizable
-{
-  T value;
-
-  stack_node (const T& v) : value (v) {}
-  stack_node (T&& v) : value (std::move (v)) {}
-
-  template <class ...Args>
-  stack_node (Args&&... args) : value (std::forward<Args>(args)...) {}
-};
-
-struct stack_base
-{
-  std::atomic<stack_node_base *> rnode;
-  std::atomic<size_t> size;
-
-  void reset (stack_node_base *nodep, size_t sz)
-    {
-      this->rnode.store (nodep, std::memory_order_relaxed);
-      this->size.store (sz, std::memory_order_relaxed);
-    }
-
-  stack_node_base* root () const;
-
-  void push_node (stack_node_base *nodep);
-  void push_nodes (stack_node_base *nodep,
-    stack_node_base **outp, size_t cnt);
-  stack_node_base* pop_node ();
-
-  bool empty () const
-    {
-      return (this->root () == nullptr);
-    }
-
-  void swap (stack_base& right);
-};
-
-static_assert (alignof (stack_base) > 1,
-               "unsupported alignment for stack base");
 
 struct stack_iter_base : public cs_guard
 {
@@ -103,34 +78,34 @@ struct stack_iter_base : public cs_guard
 template <class T>
 struct stack
 {
-  struct _Stkbase : public detail::stack_base, finalizable
+  std::atomic<detail::stack_node_base *> hnode;
+
+  struct _Stknode : public detail::stack_node_base, finalizable
     {
-      _Stkbase ()
+      T value;
+
+      _Stknode (const T& v) : value (v)
         {
-          this->reset (nullptr, 0);
         }
 
-      static void
-      clean_nodes (detail::stack_node_base *runp)
+      _Stknode (T&& v) : value (std::move (v))
         {
-          while (runp != nullptr)
-            {
-              auto tmp = runp->next;
-              delete (detail::stack_node<T> *)runp;
-              runp = tmp;
-            }
         }
 
-      ~_Stkbase ()
+      template <class ...Args>
+      _Stknode (Args&&... args) : value (std::forward<Args>(args)...)
         {
-          clean_nodes (this->root ());
-          this->reset (nullptr, 0);
+        }
+
+      void safe_destroy ()
+        {
+          auto runp = this->next;
+          delete this;
+          stack<T>::_Clean_nodes (runp);
         }
     };
 
-  std::atomic<_Stkbase *> basep;
-
-  typedef detail::stack_node<T> node_type;
+  typedef _Stknode node_type;
   typedef T value_type;
   typedef T& reference;
   typedef const T& const_reference;
@@ -139,24 +114,28 @@ struct stack
   typedef ptrdiff_t difference_type;
   typedef size_t size_type;
 
-  _Stkbase* _Base ()
+  void _Reset (detail::stack_node_base *ptr)
     {
-      return (this->basep.load (std::memory_order_relaxed));
+      this->hnode.store (ptr, std::memory_order_relaxed);
     }
 
-  const _Stkbase* _Base () const
+  static void _Clean_nodes (detail::stack_node_base *runp)
     {
-      return (this->basep.load (std::memory_order_relaxed));
+      while (runp)
+        {
+          auto tmp = runp->next;
+          delete (node_type *)runp;
+          runp = tmp;
+        }
     }
 
   template <class T1>
   void _Init (T1 first, T1 last, std::false_type)
     {
-      size_t len = 0;
       detail::stack_node_base *runp = nullptr, **outp = &runp;
       try
         {
-          for (; first != last; ++first, ++len)
+          for (; first != last; ++first)
             {
               *outp = new node_type (*first);
               outp = &(*outp)->next;
@@ -164,11 +143,11 @@ struct stack
         }
       catch (...)
         {
-          _Stkbase::clean_nodes (runp);
+          _Clean_nodes (runp);
           throw;
         }
 
-      this->_Base()->reset (runp, len);
+      this->_Reset (runp);
     }
 
   template <class T1, class T2>
@@ -186,27 +165,22 @@ struct stack
         }
       catch (...)
         {
-          _Stkbase::clean_nodes (runp);
+          _Clean_nodes (runp);
           throw;
         }
 
-      this->_Base()->reset (runp, n);
-    }
-
-  void _Init_base ()
-    {
-      this->basep.store (new _Stkbase (), std::memory_order_relaxed);
+      this->_Reset (runp);
     }
 
   stack ()
     {
-      this->_Init_base ();
+      this->_Reset (nullptr);
     }
 
   template <class T1, class T2>
   stack (T1 first, T2 last)
     {
-      this->_Init_base ();
+      this->_Reset (nullptr);
       this->_Init (first, last, typename std::is_integral<T1>::type ());
     }
 
@@ -220,19 +194,21 @@ struct stack
 
   stack (stack<T>&& right)
     {
-      this->basep.store (right.basep.load (std::memory_order_relaxed),
-                         std::memory_order_relaxed);
-      right.basep.store (nullptr, std::memory_order_relaxed);
+      this->_Reset (right._Root ());
+      right._Reset (nullptr);
     }
 
   void push (const T& value)
     {
-      this->_Base()->push_node (new node_type (value));
+      cs_guard g;
+      detail::stack_node_base::push (this->hnode, new node_type (value));
     }
 
   void push (T&& value)
     {
-      this->_Base()->push_node (new node_type (std::move (value)));
+      cs_guard g;
+      detail::stack_node_base::push (this->hnode,
+        new node_type (std::move (value)));
     }
 
   template <class Iter>
@@ -247,19 +223,18 @@ struct stack
         {
           np = new node_type (*first);
           auto **outp = &np->next;
-          size_t cnt = 1;
 
-          for (++first; first != last; ++first, ++cnt)
+          for (++first; first != last; ++first)
             {
               node_type *tmp = new node_type (*first);
               *outp = tmp, outp = &tmp->next;
             }
 
-          this->_Base()->push_nodes (np, outp, cnt);
+          detail::stack_node_base::push (this->hnode, np, outp);
         }
       catch (...)
         {
-          _Stkbase::clean_nodes (np);
+          _Clean_nodes (np);
           throw;
         }
     }
@@ -276,7 +251,6 @@ struct stack
         {
           np = new node_type (value);
           auto **outp = &np->next;
-          T1 cnt = n;
 
           for (; n != 0; --n)
             {
@@ -284,11 +258,11 @@ struct stack
               *outp = tmp, outp = &tmp->next;
             }
 
-          this->_Base()->push_nodes (np, outp, cnt);
+          detail::stack_node_base::push (this->hnode, np, outp);
         }
       catch (...)
         {
-          _Stkbase::clean_nodes (np);
+          _Clean_nodes (np);
           throw;
         }
     }
@@ -302,26 +276,37 @@ struct stack
   template <class ...Args>
   void emplace (Args&& ...args)
     {
-      this->_Base()->push_node (new node_type (std::forward<Args>(args)...));
+      detail::stack_node_base::push (this->hnode,
+        new node_type (std::forward<Args>(args)...));
     }
 
   optional<T> pop ()
     {
       cs_guard g;
-      auto node = (node_type *)this->_Base()->pop_node ();
+      auto node = detail::stack_node_base::pop (this->hnode);
 
       if (!node)
         return (optional<T> ());
 
-      optional<T> ret { node->value };
-      finalize (node);
+      optional<T> ret { ((node_type *)node)->value };
+      finalize ((node_type *)node);
       return (ret);
+    }
+
+  node_type* _Root ()
+    {
+      return ((node_type *)detail::stack_node_base::root (this->hnode));
+    }
+
+  node_type* _Root () const
+    {
+      return ((node_type *)detail::stack_node_base::root (this->hnode));
     }
 
   optional<T> top ()
     {
       cs_guard g;
-      auto node = (node_type *)this->_Base()->root ();
+      auto node = this->_Root ();
       return (node ? optional<T> { node->value } : optional<T> ());
     }
 
@@ -363,7 +348,7 @@ struct stack
 
   iterator begin ()
     {
-      return (iterator (this->_Base()->root ()));
+      return (iterator (this->_Root ()));
     }
 
   iterator end ()
@@ -373,7 +358,7 @@ struct stack
 
   const_iterator cbegin () const
     {
-      return (const_iterator (this->_Base()->root ()));
+      return (const_iterator (this->_Root ()));
     }
 
   const_iterator cend () const
@@ -393,7 +378,8 @@ struct stack
 
   size_t size () const
     {
-      return (this->_Base()->size.load (std::memory_order_relaxed));
+      cs_guard g;
+      return (detail::stack_node_base::size (this->hnode));
     }
 
   size_t max_size () const
@@ -403,7 +389,7 @@ struct stack
 
   bool empty () const
     {
-      return (this->_Base()->empty ());
+      return (this->_Root () == nullptr);
     }
 
   void swap (stack<T>& right)
@@ -411,7 +397,7 @@ struct stack
       cs_guard g;
 
       if (this != &right)
-        this->_Base()->swap (*right._Base());
+        detail::stack_node_base::swap (this->hnode, right.hnode);
     }
 
   stack<T>& operator= (const stack<T>& right)
@@ -427,8 +413,8 @@ struct stack
   stack<T>& operator= (stack<T>&& right)
     {
       this->swap (right);
-      finalize (right._Base ());
-      right.basep.store (nullptr, std::memory_order_relaxed);
+      finalize (right._Root ());
+      right._Reset (nullptr);
       return (*this);
     }
 
@@ -482,19 +468,17 @@ struct stack
 
   void clear ()
     {
-      auto prev = this->basep.exchange (new _Stkbase (),
-                                        std::memory_order_acq_rel);
-      finalize (prev);
+      auto prev = detail::stack_node_base::clear (this->hnode);
+      finalize ((node_type *)prev);
     }
 
   template <class T1, class T2>
   void assign (T1 first, T2 last)
     {
       auto tmp = stack<T> (first, last);
-      auto prev = this->basep.exchange (tmp._Base (),
-                                        std::memory_order_acq_rel);
-      finalize (prev);
-      tmp.basep.store (nullptr, std::memory_order_relaxed);
+      this->swap (tmp);
+      finalize (tmp._Root ());
+      tmp._Reset (nullptr);
     }
 
   void assign (std::initializer_list<T> lst)
@@ -504,8 +488,12 @@ struct stack
 
   ~stack ()
     {
-      delete this->_Base ();
-      this->basep.store (nullptr, std::memory_order_relaxed);
+      auto tmp = this->_Root ();
+      if (!tmp)
+        return;
+
+      _Clean_nodes (tmp);
+      this->_Reset (nullptr);
     }
 };
 

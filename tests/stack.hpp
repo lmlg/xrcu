@@ -31,6 +31,21 @@ void test_single_threaded ()
     ASSERT (stk.size () == 4);
   }
 
+  {
+    std::string vals[] = { "abc", "def", "ghi" };
+    stack_t stk { vals, vals + 3 };
+    size_t i = 0;
+
+    for (const auto& s : stk)
+      ASSERT (s == vals[i++]);
+
+    stack_t s2 { stk };
+    ASSERT (s2 == stk);
+
+    stack_t s3 { std::move (s2) };
+    ASSERT (s2 != s3);
+  }
+
   stack_t stk;
   const int NELEM = 100;
 
@@ -71,20 +86,6 @@ void test_single_threaded ()
 
   stk.push (mkstr (50));
   ASSERT (stk >= s2);
-
-  {
-    xrcu::stack<int> tmp;
-    int values[] = { 1, 2, 3, 4, 5 };
-    const size_t N = sizeof (values) / sizeof (*values);
-
-    tmp.push (values, values + N);
-    size_t i = 0;
-
-    for (auto val : tmp)
-      ASSERT (val == values[i++]);
-
-    ASSERT (i == N);
-  }
 }
 
 static void
