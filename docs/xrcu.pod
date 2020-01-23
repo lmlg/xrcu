@@ -420,7 +420,7 @@ Initializes a stack to contain C<n> times C<value>.
 
 =item template <class Iter> stack (Iter first, Iter last);
 
-Initializes a stack to with the values in the range [C<first>, C<last>)
+Initializes a stack with the values in the range [C<first>, C<last>)
 
 =item stack (std::initializer_list<T> lst);
 
@@ -446,9 +446,10 @@ Pushes the values in the range [C<first>, C<last>) to the stack.
 
 Pushes C<n> times C<value> to the stack.
 
-=item void emplace (T&& value);
+=item template<class ...Args> void emplace (Args&& ...args)
 
-Same as C<push>, only it constructs a new item by moving instead of copying.
+Same as C<push>, only it constructs a new item by calling the move
+constructor with C<args...>.
 
 =item optional<T> pop ();
 
@@ -576,15 +577,15 @@ Tests for iterator (in)equality.
 
 There really isn't much to say about the internal details of the stack. It's
 probably the easiest lock free structure to implement. As with most other
-implementations, the one in XRCU consists in an atomic pointer to the top
-node and an atomic counter to keep track of its size. The use of RCU prevents
-the biggest issue with this design: The ABA problem.
+implementations, the one in XRCU simply consists of an atomic pointer to the
+top node. The use of RCU prevents the biggest issue with this design, that is,
+the ABA problem.
 
 The only noteworthy thing to point out is that the C<swap> method is safe to
 call from multiple threads as well. In order to achive this, the library uses
-a special I<sentinel> value, that is temporarily set as the head node when a
+a special I<sentinel> bit, that is temporarily set as the head node when a
 swap is undergoing. During a swap, C<push> and C<pop> cannot proceed, since
-they check against that special value before modifying the stack.
+they check against that the special bit is not set before modifying the stack.
 
 Note that because stack iterators are implicit critical sections, and because
 of stacks' implementation, iterating a stack will always be safe, even in the
