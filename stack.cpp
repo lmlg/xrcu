@@ -118,7 +118,7 @@ size_t stack_node_base::size (const ptr_type& head)
   auto runp = get_node (head);
   size_t ret = 0;
 
-  for (; runp; runp = get_node (runp->next), ++ret) ;
+  for (; runp; runp = runp->next, ++ret) ;
   return (ret);
 }
 
