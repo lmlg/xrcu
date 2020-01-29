@@ -1,4 +1,5 @@
 #include "xrcu.hpp"
+#include "xatomic.hpp"
 #include "version.hpp"
 #include <thread>
 #include <mutex>
@@ -256,7 +257,7 @@ void registry::poll_readers (td_link *readers, td_link *outp, td_link *qsp)
 
       this->td_mtx.unlock ();
       if (loops < QS_ATTEMPTS)
-        std::this_thread::yield ();
+        xatomic_spin_nop ();
       else
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
       this->td_mtx.lock ();

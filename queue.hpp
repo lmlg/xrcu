@@ -489,12 +489,6 @@ struct queue
         }
     }
 
-  void clear ()
-    {
-      cs_guard g;
-      this->_Assign (detail::q_data::make (8, val_traits::FREE));
-    }
-
   template <class T1, class T2>
   void assign (T1 first, T2 last)
     {
@@ -585,6 +579,12 @@ struct queue
         }
 
       qdp->safe_destroy ();
+    }
+
+  void clear ()
+    {
+      cs_guard g;
+      this->_Assign (detail::q_data::make (8, val_traits::FREE));
     }
 
   ~queue ()
