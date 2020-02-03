@@ -86,6 +86,8 @@ void test_single_threaded ()
 
   stk.push (mkstr (50));
   ASSERT (stk >= s2);
+
+  ASSERT (!xrcu::in_cs ());
 }
 
 static void

@@ -73,6 +73,8 @@ void test_single_threaded ()
   tx.swap (old);
   ASSERT (old.size () == 0);
   ASSERT (tx.size () != 0);
+
+  ASSERT (!xrcu::in_cs ());
 }
 
 static void

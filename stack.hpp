@@ -43,11 +43,23 @@ struct stack_node_base
 struct stack_iter_base : public cs_guard
 {
   stack_node_base *runp;
+
   typedef std::forward_iterator_tag iterator_category;
   typedef ptrdiff_t difference_type;
   typedef size_t size_type;
 
-  stack_iter_base (stack_node_base *rp) : runp (rp) {}
+  stack_iter_base (stack_node_base *rp) : runp (rp)
+    {
+    }
+
+  stack_iter_base (const stack_iter_base& right) : runp (right.runp)
+    {
+    }
+
+  stack_iter_base (stack_iter_base&& right) : runp (right.runp)
+    {
+      right.runp = nullptr;
+    }
 
   stack_iter_base& operator++ ()
     {
@@ -317,27 +329,31 @@ struct stack
       typedef T* pointer;
 
       iterator (detail::stack_node_base *rp = nullptr) :
-        detail::stack_iter_base (rp) {}
+          detail::stack_iter_base (rp)
+        {
+        }
+
+      iterator (const iterator& it) : detail::stack_iter_base (it)
+        {
+        }
+
+      iterator (iterator&& it) : detail::stack_iter_base (std::move (it))
+        {
+        }
 
       T& operator* ()
         {
           return (((node_type *)this->runp)->value);
         }
 
+      const T& operator* () const
+        {
+          return (((const node_type *)this->runp)->value);
+        }
+
       T* operator-> ()
         {
           return (&**this);
-        }
-    };
-
-  struct const_iterator : public detail::stack_iter_base
-    {
-      const_iterator (detail::stack_node_base *rp = nullptr) :
-        detail::stack_iter_base (rp) {}
-
-      T operator* () const
-        {
-          return (((const node_type *)this->runp)->value);
         }
 
       const T* operator-> () const
@@ -345,6 +361,8 @@ struct stack
           return (&**this);
         }
     };
+
+  typedef const iterator const_iterator;
 
   iterator begin ()
     {

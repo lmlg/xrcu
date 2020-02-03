@@ -80,7 +80,7 @@ struct alignas (uintptr_t) q_data : public finalizable
           else if (xv == empty &&
               xatomic_cas_bool (&this->ptrs[curr], xv, val))
             {
-              this->wr_idx.fetch_add (1, std::memory_order_relaxed);
+              this->wr_idx.fetch_add (1, std::memory_order_acq_rel);
               return (true);
             }
 
@@ -131,6 +131,19 @@ struct alignas (uintptr_t) q_data : public finalizable
   void safe_destroy ();
 };
 
+inline void
+q_replace_cb (std::atomic<q_data *>& ptr, q_data *old, q_data *nq)
+{
+  finalize (old);
+  ptr.store (nq, std::memory_order_relaxed);
+}
+
+inline void
+q_clear_cb (std::atomic<q_data *>& ptr, q_data *old, q_data *)
+{
+  old->rd_idx.store (old->cap, std::memory_order_relaxed);
+}
+
 } // namespace detail
 
 template <class T>
@@ -164,16 +177,26 @@ struct queue
 
   struct iterator : public cs_guard
     {
-      detail::q_data *qdp;
+      const detail::q_data *qdp;
       size_t idx;
       uintptr_t c_val;
 
       typedef std::forward_iterator_tag iterator_category;
 
-      iterator (detail::q_data *q, size_t s) : qdp (q), idx (s)
+      iterator (const detail::q_data *q, size_t s) : qdp (q), idx (s)
         {
           if (this->qdp)
             this->_Adv ();
+        }
+
+      iterator (const iterator& it) :
+          qdp (it.qdp), idx (it.idx), c_val (it.c_val)
+        {
+        }
+
+      iterator (iterator&& it) : qdp (it.qdp), idx (it.idx), c_val (it.c_val)
+        {
+          it.qdp = nullptr;
         }
 
       void _Adv ()
@@ -230,11 +253,12 @@ struct queue
   template <class T1, class T2>
   void _Init (T1 n, const T2& val, std::true_type)
     {
-      auto qdp = detail::q_data::make (detail::upsize (n), val_traits::FREE);
+      size_t ns = (size_t)n;
+      auto qdp = detail::q_data::make (detail::upsize (ns), val_traits::FREE);
 
       try
         {
-          for (size_t i = 0; i < n; )
+          for (size_t i = 0; i < ns; )
             {
               qdp->ptrs[i] = val_traits::make (val);
               qdp->wr_idx.store (++i, std::memory_order_relaxed);
@@ -311,8 +335,10 @@ struct queue
           prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
 
           if (prev == val_traits::DELT)
-            // Another thread deleted this entry - Retry.
-            continue;
+            {  // Another thread deleted this entry - Retry.
+              xatomic_spin_nop ();
+              continue;
+            }
           else if ((prev & val_traits::XBIT) == 0)
             break;
 
@@ -338,6 +364,7 @@ struct queue
       catch (...)
         {
           xatomic_and (&qdp->ptrs[ix], ~val_traits::XBIT);
+          val_traits::free (elem);
           throw;
         }
 
@@ -432,7 +459,8 @@ struct queue
   iterator begin () const
     {
       cs_guard g;
-      return (iterator (this->_Data (), this->_Data()->_Rdidx ()));
+      auto qdp = this->_Data ();
+      return (iterator (qdp, qdp->_Rdidx ()));
     }
 
   iterator end () const
@@ -450,7 +478,9 @@ struct queue
       return (this->end ());
     }
 
-  void _Assign (detail::q_data *nq)
+  void _Call_cb (detail::q_data *nq, void (*f) (std::atomic<detail::q_data *>&,
+                                               detail::q_data *,
+                                               detail::q_data *))
     {
       while (true)
         {
@@ -465,28 +495,31 @@ struct queue
               if (prev != val_traits::FREE)
                 val_traits::destroy (prev);
 
-              for (; ix < qdp->cap; ++ix)
+              while (++ix < qdp->cap)
                 {
                   prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
                   if (prev != val_traits::FREE)
                     val_traits::destroy (prev);
                 }
 
-              finalize (qdp);
-              this->_Set_data (nq);
+              f (this->impl, qdp, nq);
               return;
             }
 
           while (true)
             {
-              if (qdp != this->_Data ())
-                break;
-              else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
+              if (qdp != this->_Data () ||
+                  (qdp->ptrs[ix] & val_traits::XBIT) == 0)
                 break;
 
               xatomic_spin_nop ();
             }
         }
+    }
+
+  void _Assign (detail::q_data *nq)
+    {
+      this->_Call_cb (nq, detail::q_replace_cb);
     }
 
   template <class T1, class T2>
@@ -518,7 +551,7 @@ struct queue
       auto y1 = right.cbegin (), y2 = right.cend ();
 
       for (; x1 != x2 && y1 != y2; ++x1, ++y1)
-        if (*x1 != *x2)
+        if (*x1 != *y1)
           return (false);
 
       return (x1 == x2 && y1 == y2);
@@ -585,6 +618,46 @@ struct queue
     {
       cs_guard g;
       this->_Assign (detail::q_data::make (8, val_traits::FREE));
+    }
+
+  size_t _Lock ()
+    {
+      while (true)
+        {
+          auto qdp = this->_Data ();
+          size_t ix = qdp->_Rdidx ();
+          uintptr_t prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
+
+          if ((prev & val_traits::XBIT) == 0)
+            return (qdp->wr_idx.exchange (qdp->cap,
+                                          std::memory_order_acq_rel));
+
+          while (qdp == this->_Data () &&
+              (qdp->ptrs[ix] & val_traits::XBIT) != 0)
+            xatomic_spin_nop ();
+        }
+    }
+
+  void swap (queue<T>& right)
+    {
+      if (this == &right)
+        return;
+
+      size_t s1 = this->_Lock ();
+      size_t s2 = right._Lock ();
+
+      auto tmp = this->_Data ();
+      this->_Set_data (right._Data ());
+      right._Set_data (tmp);
+
+      auto d1 = this->_Data();
+      auto d2 = right._Data();
+
+      d1->wr_idx.store (s2, std::memory_order_relaxed);
+      d2->wr_idx.store (s1, std::memory_order_relaxed);
+
+      d1->ptrs[d1->_Rdidx ()] &= ~val_traits::XBIT;
+      d2->ptrs[d2->_Rdidx ()] &= ~val_traits::XBIT;
     }
 
   ~queue ()

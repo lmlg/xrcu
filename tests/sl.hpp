@@ -43,21 +43,25 @@ void test_single_threaded ()
     for (auto ch : s)
       ASSERT (isdigit (ch));
 
-  const int PIVOT = 572;
-  auto it = sl.lower_bound (mkstr (PIVOT));
-  ASSERT (it != sl.end ());
-  ASSERT (*it == mkstr (PIVOT - 1));
+  {
+    const int PIVOT = 572;
+    auto it = sl.lower_bound (mkstr (PIVOT));
+    ASSERT (it != sl.end ());
+    ASSERT (*it == mkstr (PIVOT - 1));
 
-  it = sl.upper_bound (mkstr (PIVOT));
-  ASSERT (it != sl.end ());
-  ASSERT (*it == mkstr (PIVOT + 1));
+    it = sl.upper_bound (mkstr (PIVOT));
+    ASSERT (it != sl.end ());
+    ASSERT (*it == mkstr (PIVOT + 1));
 
-  sklist_t s2 { std::string ("aaa"), std::string ("bbb"),
-                std::string ("ccc"), std::string ("ddd") };
+    sklist_t s2 { std::string ("aaa"), std::string ("bbb"),
+                  std::string ("ccc"), std::string ("ddd") };
 
-  sl.swap (s2);
-  ASSERT (sl.size () == 4);
-  ASSERT (sl.contains (std::string ("aaa")));
+    sl.swap (s2);
+    ASSERT (sl.size () == 4);
+    ASSERT (sl.contains (std::string ("aaa")));
+  }
+
+  ASSERT (!xrcu::in_cs ());
 }
 
 static void

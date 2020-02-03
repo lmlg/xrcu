@@ -205,7 +205,24 @@ struct skip_list
     {
       uintptr_t node;
 
-      iterator (uintptr_t addr) : node (addr) {}
+      typedef std::forward_iterator_tag iterator_category;
+
+      iterator () : node (0)
+        {
+        }
+
+      iterator (uintptr_t addr) : node (addr)
+        {
+        }
+
+      iterator (const iterator& right) : node (right.node)
+        {
+        }
+
+      iterator (iterator&& right) : node (right.node)
+        {
+          right.node = 0;
+        }
 
       iterator& operator++ ()
         {
@@ -232,6 +249,24 @@ struct skip_list
       const T& operator* () const
         {
           return (skip_list<T, Cmp>::_Getk (this->node));
+        }
+
+      const T* operator-> () const
+        {
+          return (&**this);
+        }
+
+      iterator& operator= (const iterator& right)
+        {
+          this->node = right.node;
+          return (*this);
+        }
+
+      iterator& operator= (iterator&& right)
+        {
+          this->node = right.node;
+          right.node = 0;
+          return (*this);
         }
 
       bool operator== (const iterator& right) const

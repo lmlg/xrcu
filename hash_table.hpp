@@ -93,6 +93,25 @@ struct ht_iter : public cs_guard
       this->_Adv ();
     }
 
+  ht_iter ()
+    {
+    }
+
+  ht_iter (const ht_iter<Ktraits, Vtraits>& right) :
+      vec (right.vec), idx (right.idx), c_key (right.c_key),
+      c_val (right.c_val), valid (right.valid)
+    {
+    }
+
+  ht_iter (ht_iter<Ktraits, Vtraits>&& right) :
+      vec (right.vec), idx (right.idx), c_key (right.c_key),
+      c_val (right.c_val), valid (right.valid)
+    {
+      right.vec = nullptr;
+      right.idx = 0;
+      right.valid = false;
+    }
+
   void _Adv ()
     {
       this->valid = false;
@@ -581,12 +600,24 @@ struct hash_table
 
   struct iterator : public detail::ht_iter<key_traits, val_traits>
     {
-      iterator (const self_type& self)
+      typedef detail::ht_iter<key_traits, val_traits> base_type;
+
+      iterator () : base_type ()
+        {
+        }
+
+      iterator (const self_type& self) : base_type ()
         {
           this->_Init (self.vec);
         }
 
-      iterator () {}
+      iterator (const iterator& right) : base_type (right)
+        {
+        }
+
+      iterator (iterator&& right) : base_type (std::move (right))
+        {
+        }
 
       KeyT key () const
         {
