@@ -228,7 +228,7 @@ struct queue
       iterator operator++ (int)
         {
           iterator rv { *this };
-          this->_Adv ();
+          ++*this;
           return (rv);
         }
 
