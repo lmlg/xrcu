@@ -61,17 +61,9 @@ struct stack_iter_base : public cs_guard
       right.runp = nullptr;
     }
 
-  stack_iter_base& operator++ ()
+  void _Adv ()
     {
       this->runp = this->runp->next;
-      return (*this);
-    }
-
-  stack_iter_base operator++ (int)
-    {
-      stack_iter_base tmp (this->runp);
-      ++*this;
-      return (tmp);
     }
 
   bool operator== (const stack_iter_base& right) const
@@ -359,6 +351,19 @@ struct stack
       const T* operator-> () const
         {
           return (&**this);
+        }
+
+      iterator& operator++ ()
+        {
+          this->_Adv ();
+          return (*this);
+        }
+
+      iterator operator++ (int)
+        {
+          iterator tmp = { this->runp };
+          this->_Adv ();
+          return (tmp);
         }
     };
 
