@@ -21,11 +21,6 @@ namespace xrcu
 namespace detail
 {
 
-static constexpr size_t min_size (size_t sz)
-{
-  return (sz < 2 ? 2 : sz);
-}
-
 static inline uint32_t upsize (uint32_t x)
 {
   x |= x >> 1;
@@ -132,16 +127,23 @@ struct alignas (uintptr_t) q_data : public finalizable
 };
 
 inline void
-q_replace_cb (std::atomic<q_data *>& ptr, q_data *old, q_data *nq)
+q_replace_cb (std::atomic<q_data *>& ptr, q_data *old, q_data *nq, uintptr_t)
 {
   finalize (old);
   ptr.store (nq, std::memory_order_relaxed);
 }
 
 inline void
-q_clear_cb (std::atomic<q_data *>& ptr, q_data *old, q_data *)
+q_clear_cb (std::atomic<q_data *>&, q_data *old, q_data *, uintptr_t empty)
 {
+  old->wr_idx.store (old->cap, std::memory_order_relaxed);
   old->rd_idx.store (old->cap, std::memory_order_relaxed);
+
+  for (size_t i = 0; i < old->cap; ++i)
+    old->ptrs[i] = empty;
+
+  old->rd_idx.store (0, std::memory_order_release);
+  old->wr_idx.store (0, std::memory_order_release);
 }
 
 } // namespace detail
@@ -478,9 +480,9 @@ struct queue
       return (this->end ());
     }
 
-  void _Call_cb (detail::q_data *nq, void (*f) (std::atomic<detail::q_data *>&,
-                                               detail::q_data *,
-                                               detail::q_data *))
+  void _Call_cb (detail::q_data *nq, uintptr_t xv,
+    void (*f) (std::atomic<detail::q_data *>&,
+               detail::q_data *, detail::q_data *, uintptr_t))
     {
       while (true)
         {
@@ -498,11 +500,11 @@ struct queue
               while (++ix < qdp->cap)
                 {
                   prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
-                  if (prev != val_traits::FREE)
+                  if (prev != val_traits::FREE && prev != val_traits::DELT)
                     val_traits::destroy (prev);
                 }
 
-              f (this->impl, qdp, nq);
+              f (this->impl, qdp, nq, xv);
               return;
             }
 
@@ -519,7 +521,7 @@ struct queue
 
   void _Assign (detail::q_data *nq)
     {
-      this->_Call_cb (nq, detail::q_replace_cb);
+      this->_Call_cb (nq, 0, detail::q_replace_cb);
     }
 
   template <class T1, class T2>
@@ -617,7 +619,7 @@ struct queue
   void clear ()
     {
       cs_guard g;
-      this->_Assign (detail::q_data::make (8, val_traits::FREE));
+      this->_Call_cb (nullptr, val_traits::FREE, detail::q_clear_cb);
     }
 
   size_t _Lock ()
