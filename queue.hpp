@@ -157,6 +157,14 @@ struct queue
 
   std::atomic<detail::q_data *> impl;
 
+  typedef T value_type;
+  typedef T& reference;
+  typedef const T& const_reference;
+  typedef T* pointer;
+  typedef const T* const_pointer;
+  typedef ptrdiff_t difference_type;
+  typedef size_t size_type;
+
   void _Init (size_t size)
     {
       this->impl = detail::q_data::make (size, val_traits::FREE);
@@ -381,12 +389,9 @@ struct queue
       this->_Set_data (nq);
       return (true);
     }
- 
-  void push (const T& elem)
-    {
-      cs_guard g;
-      uintptr_t val = val_traits::make (elem);
 
+  void _Push (uintptr_t val)
+    {
       while (true)
         {
           auto qdp = this->_Data ();
@@ -394,6 +399,19 @@ struct queue
               this->_Rearm (val, qdp))
             break;
         }
+    }
+ 
+  void push (const T& elem)
+    {
+      cs_guard g;
+      this->_Push (val_traits::make (elem));
+    }
+
+  template <class ...Args>
+  void emplace (Args&& ...args)
+    {
+      cs_guard g;
+      this->_Push (val_traits::make (std::forward<Args>(args)...));
     }
 
   optional<T> pop ()

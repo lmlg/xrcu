@@ -176,6 +176,17 @@ struct hash_table
       alignof (ValT) >= 8), ValT> val_traits;
 
   typedef hash_table<KeyT, ValT, EqFn, HashFn> self_type;
+  typedef KeyT key_type;
+  typedef ValT mapped_type;
+  typedef std::pair<KeyT, ValT> value_type;
+  typedef EqFn key_equal;
+  typedef HashFn hasher;
+  typedef value_type& reference;
+  typedef const value_type& const_reference;
+  typedef value_type* pointer;
+  typedef const value_type* const_pointer;
+  typedef ptrdiff_t difference_type;
+  typedef size_t size_type;
 
   detail::ht_vector *vec;
   EqFn eqfn;

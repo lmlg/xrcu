@@ -2,6 +2,7 @@
 #define __XRCU_UTILS_HPP__   1
 
 #include "xrcu.hpp"
+#include <utility>
 
 namespace xrcu
 {
@@ -14,7 +15,14 @@ struct alignas (8) type_wrapper : public finalizable
 {
   T value;
 
-  type_wrapper (const T& val) : value (val) {}
+  type_wrapper (const T& val) : value (val)
+    {
+    }
+
+  template <class ...Args>
+  type_wrapper (Args&&... args) : value (std::forward<Args>(args)...)
+    {
+    }
 };
 
 template <bool Integral, class T>
@@ -50,6 +58,17 @@ struct wrapped_traits<false, T>
   static uintptr_t make (const T& val)
     {
       return ((uintptr_t)(new type_wrapper<T> (val)));
+    }
+
+  template <class ...Args>
+  static uintptr_t make (Args&&... args)
+    {
+      return ((uintptr_t)(new type_wrapper<T> (std::forward<Args>(args)...)));
+    }
+
+  static uintptr_t make (T&& val)
+    {
+      return ((uintptr_t)(new type_wrapper<T> (std::forward<T&&> (val))));
     }
 
   static T& get (uintptr_t addr)
