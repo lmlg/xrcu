@@ -1,15 +1,13 @@
-<?xml version="1.0" ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title>XRCU Documentation</title>
+<title>XRCU documentation</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-</head>
 <style>
 body {
    color: black;
    background: white;
-   font-family: Cantarell, Verdana, sans-serif;
+   font-family: Verdana, Arial, sans-serif;
    margin: 1ex;
    padding: 1ex;
    max-width: 120ex;
@@ -148,9 +146,8 @@ td {
   border-style: solid;
 }
 </style>
-
+</head>
 <body>
-
 
 
 <ul id="index">
@@ -180,16 +177,22 @@ td {
           <li><a href="#Implementation-details2">Implementation details</a></li>
         </ul>
       </li>
+      <li><a href="#Queues">Queues</a>
+        <ul>
+          <li><a href="#Queue-API">Queue API</a></li>
+          <li><a href="#Implementation-details3">Implementation details</a></li>
+        </ul>
+      </li>
       <li><a href="#Skip-lists">Skip lists</a>
         <ul>
           <li><a href="#Skip-list-API">Skip list API</a></li>
-          <li><a href="#Implementation-details3">Implementation details</a></li>
+          <li><a href="#Implementation-details4">Implementation details</a></li>
         </ul>
       </li>
       <li><a href="#Hash-tables">Hash tables</a>
         <ul>
           <li><a href="#Hash-table-API">Hash table API</a></li>
-          <li><a href="#Implementation-details4">Implementation details</a></li>
+          <li><a href="#Implementation-details5">Implementation details</a></li>
         </ul>
       </li>
     </ul>
@@ -480,9 +483,11 @@ td {
 
 <h3 id="Implementation-details1">Implementation details</h3>
 
-<p>Optionals are rather simple: They are implemented by using a union that supresses the constructor of the template type, and a flag that marks whether the optional has a value or not.</p>
+<p>Optionals are rather simple: They are implemented by using a flat buffer on which placement new is called. Once an object has been constructed, a pointer is cached for the buffer. This pointer will be used when fetching the value, or destroying the object (it&#39;s null for empty optionals).</p>
 
 <p>Optionals are very useful when performing lookups in mapped containers, since they allow us to bypass the need of additional output parameters to determine if a search was successful in an atomic way.</p>
+
+<p>Another reason as to why optional values are used so extensively in XRCU is because we consider them to be the best way to signal both a valid object, as well as an error. When using lock-less data structures, it&#39;s impossible to determine beforehand whether an error will occur when calling a method (because multithreading makes things non deterministic). Throwing an exception was considered a bit too &quot;punishing&quot; - it&#39;s not precisely a programming error, after all.</p>
 
 <h2 id="Stacks">Stacks</h2>
 
@@ -499,13 +504,16 @@ td {
 <pre><code>  template &lt;class T&gt;
   struct stack
     {
-      struct iterator
-        {
-        };
+      typedef T value_type;
+      typedef T&amp; reference;
+      typedef const T&amp; const_reference;
+      typedef T* pointer;
+      typedef const T* const_pointer;
+      typedef ptrdiff_t difference_type;
+      typedef size_t size_type;
 
-      struct const_iterator
-        {
-        };   
+      struct iterator;
+      struct const_iterator;
     };</code></pre>
 
 <p>In C++&#39;s parlance, a stack iterator is a <i>forward</i> iterator, and it may be used in any function that accepts them.</p>
@@ -663,7 +671,7 @@ td {
 <dt id="template-class-T1-class-T2-void-assign-T1-x-T2-y">template &lt;class T1, class T2&gt; void assign (T1 x, T2 y);</dt>
 <dd>
 
-<p>Assigns to the stack the elements described by (x, y). They could be an iterator range, or a pair of (integer, value), as is the case with the stack&#39;s constructor.</p>
+<p>Assigns to the stack the elements described by (<code>x</code>, <code>y</code>). They could be an iterator range, or a pair of (integer, value), as is the case with the stack&#39;s constructor.</p>
 
 </dd>
 <dt id="void-assign-std::initializer_listT-lst">void assign (std::initializer_list&lt;T&gt; lst);</dt>
@@ -756,6 +764,259 @@ td {
 
 <p>Note that because stack iterators are implicit critical sections, and because of stacks&#39; implementation, iterating a stack will always be safe, even in the presence of operations like <code>push</code> and <code>pop</code>. The only way for an iterator to be invalidated is it&#39;s at the beggining of the stack, and a call to <code>pop</code> is made. Even then, dereferencing the iterator is valid, but advancing it will end prematurely, since the object was unlinked from the stack.</p>
 
+<h2 id="Queues">Queues</h2>
+
+<pre><code>    #include &lt;xrcu/queue.hpp&gt;</code></pre>
+
+<p>This is a multi-producer, multi-consumer, FIFO queue. Much like the stack, elements can be pushed or popped from it, but the order is different: They will be retrieved in the same order they were inserted.</p>
+
+<p>In XRCU, queues meet the requirements for the C++ concept of <i>Container</i>.</p>
+
+<h3 id="Queue-API">Queue API</h3>
+
+<p>Queues are templated types, and they may be instantiated with a type T:</p>
+
+<pre><code>  template &lt;class T&gt;
+  struct queue
+    {
+      typedef T value_type;
+      typedef T&amp; reference;
+      typedef const T&amp; const_reference;
+      typedef T* pointer;
+      typedef const T* const_pointer;
+      typedef ptrdiff_t difference_type;
+      typedef size_t size_type;
+
+      struct iterator;
+      struct const_iterator;
+    };</code></pre>
+
+<p>As with the stack, a queue&#39;s iterator can be considered a <i>forward</i> iterator, and it&#39;s also a <code>cs_guard</code>, so that a queue may be examined by an iterator, at any time.</p>
+
+<p>The following describes the public interface for <code>queue&lt;T&gt;</code></p>
+
+<dl>
+
+<dt id="queue">queue ();</dt>
+<dd>
+
+<p>Default constructor. Initializes a queue to be empty.</p>
+
+</dd>
+<dt id="template-class-Integer-queue-Integer-n-T-value">template &lt;class Integer&gt; queue (Integer n, T value);</dt>
+<dd>
+
+<p>Initializes a queue to contain <code>n</code> times <code>value</code>.</p>
+
+</dd>
+<dt id="template-class-Iter-queue-Iter-first-Iter-last">template &lt;class Iter&gt; queue (Iter first, Iter last);</dt>
+<dd>
+
+<p>Initializes a queue with the values in the range [<code>first</code>, <code>last</code>).</p>
+
+</dd>
+<dt id="queue-std::initializer_listT-lst">queue (std::initializer_list&lt;T&gt; lst);</dt>
+<dd>
+
+<p>Initializes a queue with the values in <code>lst</code>.</p>
+
+</dd>
+<dt id="queue-const-queueT-other">queue (const queue&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes a queue with the values in <code>other</code>.</p>
+
+</dd>
+<dt id="queue-queueT-other">queue (queue&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move constructor. Takes ownership of the values in <code>other</code>.</p>
+
+</dd>
+<dt id="void-push-const-T-value1">void push (const T&amp; value);</dt>
+<dd>
+
+<p>Pushes <code>value</code> to the top of the queue.</p>
+
+</dd>
+<dt id="template-class-...Args-void-emplace-Args-...args">template &lt;class ...Args&gt; void emplace (Args&amp;&amp; ...args)</dt>
+<dd>
+
+<p>Same as <code>push</code>, only the new item is constructed by calling the move constructor with <code>args...</code>.</p>
+
+</dd>
+<dt id="optionalT-pop1">optional&lt;T&gt; pop ();</dt>
+<dd>
+
+<p>Removes the first item from the queue, and returns an optional with that value. If the queue is empty, the method returns an optional with no value.</p>
+
+</dd>
+<dt id="optionalT-front-const">optional&lt;T&gt; front () const;</dt>
+<dd>
+
+<p>Returns an optional with the first value from the queue. If the queue is empty, an optional with no value is returned instead.</p>
+
+</dd>
+<dt id="optionalT-back-const">optional&lt;T&gt; back () const;</dt>
+<dd>
+
+<p>Returns an optional with the last value from the queue. If the queue is empty, an optional with no value is returned instead.</p>
+
+</dd>
+<dt id="size_type-size-const1">size_type size () const;</dt>
+<dd>
+
+<p>Returns the size of the queue.</p>
+
+</dd>
+<dt id="size_type-max_size-const1">size_type max_size () const;</dt>
+<dd>
+
+<p>Returns the maximum allowed size for the queue.</p>
+
+</dd>
+<dt id="void-swap-queueT-other">void swap (queue&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Swaps the contents of the queue with <code>other</code>, but only if <code>other</code> is not the same object.</p>
+
+</dd>
+<dt id="queueT-operator-const-queueT-other">queue&lt;T&gt;&amp; operator= (const queue&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Assigns the contents of <code>other</code> to the queue and returns <code>*this</code>.</p>
+
+</dd>
+<dt id="queueT-operator-queueT-other">queue&lt;T&gt;&amp; operator= (queue&lt;T&gt;&amp;&amp; other);</dt>
+<dd>
+
+<p>Move assignment. Takes ownership of the elements in <code>other</code>. Returns <code>*this</code>.</p>
+
+</dd>
+<dt id="bool-operator-const-queueT-other">bool operator== (const queue&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Compares the elements of the queue with the ones in <code>other</code>. Returns true if they are all equal.</p>
+
+</dd>
+<dt id="bool-operator-const-queueT-other1">bool operator!= (const queue&lt;T&gt;&amp; other);</dt>
+<dd>
+
+<p>Compares the elements of the queue with the ones in <code>other</code>. Returns true if any two of them are not equal.</p>
+
+</dd>
+<dt id="bool-operator-const-queueT-other-const">bool operator&lt; (const queue&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+</dd>
+<dt id="bool-operator-const-queueT-other-const1">bool operator&gt; (const queue&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+</dd>
+<dt id="bool-operator-const-queueT-other-const2">bool operator&lt;= (const queue&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+</dd>
+<dt id="bool-operator-const-queueT-other-const3">bool operator&gt;= (const queue&lt;T&gt;&amp; other) const;</dt>
+<dd>
+
+<p>Lexicographically compares the elements of the queue with the ones in <code>other</code>, in a way that is equivalent to calling <code>std::lexicographical_compare</code>.</p>
+
+</dd>
+<dt id="void-clear1">void clear ();</dt>
+<dd>
+
+<p>Removes every element from the queue.</p>
+
+</dd>
+<dt id="template-class-T1-class-T2-void-assign-T1-x-T2-y1">template &lt;class T1, class T2&gt; void assign (T1 x, T2 y);</dt>
+<dd>
+
+<p>Assigns to the queue the elements described by (<code>x</code>, <code>y</code>). They can be an iterator range or a pair of (integer, value), as is the case with the queue&#39;s constructor.</p>
+
+</dd>
+<dt id="void-assign-std::initializer_listT-lst1">void assign (std::initializer_list&lt;T&gt; lst);</dt>
+<dd>
+
+<p>Assigns to the queue the elements in <code>lst</code>.</p>
+
+</dd>
+<dt id="iterator-begin1">iterator begin ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cbegin-const1">const_iterator cbegin () const;</dt>
+<dd>
+
+<p>Returns an iterator to the first element of the queue.</p>
+
+</dd>
+<dt id="iterator-end1">iterator end ();</dt>
+<dd>
+
+</dd>
+<dt id="const_iterator-cend-const1">const_iterator cend () const;</dt>
+<dd>
+
+<p>Returns an iterator one past the last element of the queue.</p>
+
+</dd>
+<dt id="iterator::iterator1">iterator::iterator ();</dt>
+<dd>
+
+<p>Default constructor for queue iterators. Leaves the object in an invalid state. Dereferencing or incrementing such an iterator has undefined behavior.</p>
+
+</dd>
+<dt id="iterator::iterator-const-iterator-other1">iterator::iterator (const iterator&amp; other);</dt>
+<dd>
+
+<p>Copy constructor. Initializes the iterator to be equal to <code>other</code>.</p>
+
+</dd>
+<dt id="const-T-iterator::operator">const T&amp; iterator::operator* ();</dt>
+<dd>
+
+</dd>
+<dt id="const-T-const_iterator::operator-const1">const T&amp; const_iterator::operator* () const;</dt>
+<dd>
+
+<p>Returns a const reference to the iterator&#39;s underlying object.</p>
+
+</dd>
+<dt id="iterator-iterator::operator1">iterator&amp; iterator::operator++ ();</dt>
+<dd>
+
+<p>Pre-increment operator. Moves the iterator forward, and returns it. If the iterator was at the end of the stack, the results are undefined.</p>
+
+</dd>
+<dt id="iterator-iterator::operator-int1">iterator iterator::operator++ (int);</dt>
+<dd>
+
+<p>Post-increment operator. Moves the iterator forward, and returns an iterator equal to what it was before incrementing. If the iterator was at the end of the stack, the results are undefined.</p>
+
+</dd>
+<dt id="bool-iterator::operator-const-iterator-other2">bool iterator::operator== (const iterator&amp; other);</dt>
+<dd>
+
+</dd>
+<dt id="bool-iterator::operator-const-iterator-other3">bool iterator::operator!= (const iterator&amp; other);</dt>
+<dd>
+
+<p>Tests for iterator (in)equality.</p>
+
+</dd>
+</dl>
+
+<h3 id="Implementation-details3">Implementation details</h3>
+
+<p>The design of the multi-producer, multi-consumer queue in XRCU is rather simple and different from other implementations. It consists of a single array that holds either the elements themselvers, or pointers to them, a decision taken at compile time via type traits.</p>
+
+<p>In addition to the vector, the queue is composed of three additional counters: the capacity, a read cursor and a write cursor. The capacity is static, and simply stores the raw number of elements that the queue can hold before it&#39;s forced to reallocate. The read and write cursors and indices that indicate at which positions the <code>pop</code> and <code>push</code> or <code>emplace</code> operations may take place.</p>
+
+<p>When an element is pushed into a queue, the write cursor is checked against the capacity. If the queue is full, then it must be reallocated. This is done by marking each element with a special bit, allocating a new queue and then copying over the elements. If there&#39;s room in the queue, the element is atomically set via compare-and-swap, and if successful, the write cursor is also updated atomically.</p>
+
+<p>Popping elements proceeds in a similar way. The read cursor is compared against the write cursor, and returns prematurely with failure if there are no more elements to pop. Otherwise, it&#39;s atomically replaced with a special marker, after which the read cursor is updated.</p>
+
 <h2 id="Skip-lists">Skip lists</h2>
 
 <pre><code>    #include &lt;xrcu/skip_list.hpp&gt;</code></pre>
@@ -771,13 +1032,19 @@ td {
 <pre><code>    template &lt;class T, class Cmp = std::less&lt;T&gt; &gt;
     struct skip_list
       {
-        struct iterator
-          {
-          };
+        typedef T value_type;
+        typedef T key_type;
+        typedef Cmp key_compare;
+        typedef Cmp value_compare;
+        typedef T&amp; reference;
+        typedef const T&amp; const_reference;
+        typedef T* pointer;
+        typedef const T* const_pointer;
+        typedef ptrdiff_t difference_type;
+        typedef size_t size_type;
 
-        struct const_iterator
-          {
-          };
+        struct iterator;
+        struct const_iterator;
       };</code></pre>
 
 <p>The template parameter <code>T</code> refers to the key type, whereas <code>Cmp</code> is the comparator type, which defaults to <code>std::less</code>. Under most circumstances, that is usually enough, but users may instantiate with any other type that defines the <code>operator()</code> which returns a boolean.</p>
@@ -848,33 +1115,33 @@ td {
 <p>Erases <code>key</code> from the skip list and returns an optional with that element as its value, if the key was present. Otherwise, the returned optional has no value.</p>
 
 </dd>
-<dt id="iterator-begin1">iterator begin ();</dt>
+<dt id="iterator-begin2">iterator begin ();</dt>
 <dd>
 
 </dd>
-<dt id="const_iterator-cbegin-const1">const_iterator cbegin () const;</dt>
+<dt id="const_iterator-cbegin-const2">const_iterator cbegin () const;</dt>
 <dd>
 
 <p>Returns an iterator to the first element of the skip list.</p>
 
 </dd>
-<dt id="iterator-end1">iterator end ();</dt>
+<dt id="iterator-end2">iterator end ();</dt>
 <dd>
 
 </dd>
-<dt id="const_iterator-cend-const1">const_iterator cend () const;</dt>
+<dt id="const_iterator-cend-const2">const_iterator cend () const;</dt>
 <dd>
 
 <p>Returns an iterator one past the last element of the skip list.</p>
 
 </dd>
-<dt id="size_t-size-const">size_t size () const;</dt>
+<dt id="size_type-size-const2">size_type size () const;</dt>
 <dd>
 
 <p>Returns the current size of the skip list.</p>
 
 </dd>
-<dt id="size_t-max_size-const">size_t max_size () const;</dt>
+<dt id="size_type-max_size-const2">size_type max_size () const;</dt>
 <dd>
 
 <p>Returns the maximum allowed size for a skip list.</p>
@@ -892,7 +1159,7 @@ td {
 <p>Assigns to the skip list the elements in [<code>first</code>, <code>last</code>).</p>
 
 </dd>
-<dt id="void-assign-std::initializer_listT-lst1">void assign (std::initializer_list&lt;T&gt; lst);</dt>
+<dt id="void-assign-std::initializer_listT-lst2">void assign (std::initializer_list&lt;T&gt; lst);</dt>
 <dd>
 
 <p>Assigns to the skip list the elements in <code>lst</code>.</p>
@@ -916,7 +1183,7 @@ td {
 <p>Swaps the contents of the skip list with <code>other</code>, but only if <code>other</code> is a different object.</p>
 
 </dd>
-<dt id="void-clear1">void clear ();</dt>
+<dt id="void-clear2">void clear ();</dt>
 <dd>
 
 <p>Removes every element from the skip list.</p>
@@ -924,7 +1191,7 @@ td {
 </dd>
 </dl>
 
-<h3 id="Implementation-details3">Implementation details</h3>
+<h3 id="Implementation-details4">Implementation details</h3>
 
 <p>In XRCU, skip lists are implemented as described in any piece of literature that talks about them. Basically, every skip list of depth <i>D</i> has a head node that can be linked with up to other <i>D</i> nodes. When performing a lookup for an element, we start at the head node, and move horizontally until the current element is equal or greater. If it&#39;s equal, we the lookup succeeded. Otherwise, we move vertically to the next node, until we either find the element, or we exhausted every node.</p>
 
@@ -953,13 +1220,20 @@ td {
               class Hash = std::hash&lt;Key&gt; &gt;
     struct hash_table
       {
-        struct iterator
-          {
-          };
+        typedef Val mapped_type;
+        typedef Key key_type;
+        typedef std::pair&lt;Key, Val&gt; value_type;
+        typedef Equal key_equal;
+        typedef Hash hasher;
+        typedef value_type&amp; reference;
+        typedef const value_type&amp; const_reference;
+        typedef value_type* pointer;
+        typedef const value_type* const_pointer;
+        typedef ptrdiff_t difference_type;
+        typedef size_t size_type;
 
-        struct const_iterator
-          {
-          };
+        struct iterator;
+        struct const_iterator;
       };</code></pre>
 
 <p>The template parameters should be pretty self explanatory: They refer to the key, value, equality and hashing types, in that order. The <code>Equal</code> type has to operate on two keys and return a boolean value that determines their equality, whereas the <code>Hash</code> type has to operate on keys and return unsigned integers. Both are allowed to throw exceptions, although it is not really wise to do so.</p>
@@ -1000,13 +1274,13 @@ td {
 <p>Move constructor. Takes ownership of the values in <code>other</code>.</p>
 
 </dd>
-<dt id="size_t-size-const1">size_t size () const;</dt>
+<dt id="size_t-size-const">size_t size () const;</dt>
 <dd>
 
 <p>Returns the hash table size.</p>
 
 </dd>
-<dt id="size_t-max_size-const1">size_t max_size () const;</dt>
+<dt id="size_t-max_size-const">size_t max_size () const;</dt>
 <dd>
 
 <p>Returns the maximum allowed size for a hash table.</p>
@@ -1062,7 +1336,7 @@ td {
 <p>Removes <code>key</code> from the hash table and returns the value that was associated to if, if it was present.</p>
 
 </dd>
-<dt id="void-clear2">void clear ();</dt>
+<dt id="void-clear3">void clear ();</dt>
 <dd>
 
 <p>Removes every element from the hash table.</p>
@@ -1098,33 +1372,33 @@ td {
 <p>Swaps the contents of the hash table with <code>other</code>, but only if <code>other</code> is a different object.</p>
 
 </dd>
-<dt id="iterator-begin2">iterator begin ();</dt>
+<dt id="iterator-begin3">iterator begin ();</dt>
 <dd>
 
 </dd>
-<dt id="const_iterator-cbegin-const2">const_iterator cbegin () const;</dt>
+<dt id="const_iterator-cbegin-const3">const_iterator cbegin () const;</dt>
 <dd>
 
 <p>Returns an iterator to the first element of the hash table.</p>
 
 </dd>
-<dt id="iterator-end2">iterator end ();</dt>
+<dt id="iterator-end3">iterator end ();</dt>
 <dd>
 
 </dd>
-<dt id="const_iterator-cend-const2">const_iterator cend () const;</dt>
+<dt id="const_iterator-cend-const3">const_iterator cend () const;</dt>
 <dd>
 
 <p>Returns an iterator one past the last element of the hash table.</p>
 
 </dd>
-<dt id="iterator::iterator1">iterator::iterator ();</dt>
+<dt id="iterator::iterator2">iterator::iterator ();</dt>
 <dd>
 
 <p>Default constructor for hash table iterators. Leaves the object in an invalid state. Dereferencing or incrementing such an iterator has undefined behavior.</p>
 
 </dd>
-<dt id="iterator::iterator-const-iterator-other1">iterator::iterator (const iterator&amp; other);</dt>
+<dt id="iterator::iterator-const-iterator-other2">iterator::iterator (const iterator&amp; other);</dt>
 <dd>
 
 <p>Copy constructor. Initializes the iterator to be equal to <code>other</code>.</p>
@@ -1148,23 +1422,23 @@ td {
 <p>Returns an <code>std::pair</code> constructed with the key and value of the iterator.</p>
 
 </dd>
-<dt id="iterator-iterator::operator1">iterator&amp; iterator::operator++ ();</dt>
+<dt id="iterator-iterator::operator2">iterator&amp; iterator::operator++ ();</dt>
 <dd>
 
 <p>Pre-increment operator. Moves the iterator forward and returns it. If the iterator was at the end, the results are undefined.</p>
 
 </dd>
-<dt id="iterator-iterator::operator-int1">iterator iterator::operator++ (int);</dt>
+<dt id="iterator-iterator::operator-int2">iterator iterator::operator++ (int);</dt>
 <dd>
 
 <p>Post-increment operator. Moves the iterator forward, and returns an iterator equal to what it was before incrementing. If the iterator was at the end, the results are undefined.</p>
 
 </dd>
-<dt id="bool-iterator::operator-const-iterator-other2">bool iterator::operator== (const iterator&amp; other);</dt>
+<dt id="bool-iterator::operator-const-iterator-other4">bool iterator::operator== (const iterator&amp; other);</dt>
 <dd>
 
 </dd>
-<dt id="bool-iterator::operator-const-iterator-other3">bool iterator::operator!= (const iterator&amp; other);</dt>
+<dt id="bool-iterator::operator-const-iterator-other5">bool iterator::operator!= (const iterator&amp; other);</dt>
 <dd>
 
 <p>Test for iterator (in)equality.</p>
@@ -1172,7 +1446,7 @@ td {
 </dd>
 </dl>
 
-<h3 id="Implementation-details4">Implementation details</h3>
+<h3 id="Implementation-details5">Implementation details</h3>
 
 <p>Hash tables are somewhat complex, because the atomicity requirements force us to do some rather convoluted things. To start off, a hash table is essentially a vector of consecutive <code>key</code> and <code>value</code> pairs, with some special values indicating <code>free</code> and <code>deleted</code> entries. However, since we can only operate atomically on integers, we wrap any other type that is not integral into a dynamically allocated pointer. This is done based on the template instantiation and is figured out at compile time.</p>
 
