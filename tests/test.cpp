@@ -1,8 +1,9 @@
-#include "hash.hpp"
-#include "sl.hpp"
 #include "xrcu.hpp"
-#include "stack.hpp"
 #include "opt.hpp"
+#include "sl.hpp"
+#include "hash.hpp"
+#include "stack.hpp"
+#include "queue.hpp"
 
 int main ()
 {

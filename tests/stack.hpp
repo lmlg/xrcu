@@ -7,7 +7,8 @@
 
 namespace stk_test
 {
-  typedef xrcu::stack<std::string> stack_t;
+
+typedef xrcu::stack<std::string> stack_t;
 
 void test_single_threaded ()
 {
@@ -28,6 +29,21 @@ void test_single_threaded ()
     stack_t stk { std::string ("abc"), std::string ("def"),
                   std::string ("ghi"), std::string ("jkl") };
     ASSERT (stk.size () == 4);
+  }
+
+  {
+    std::string vals[] = { "abc", "def", "ghi" };
+    stack_t stk { vals, vals + 3 };
+    size_t i = 0;
+
+    for (const auto& s : stk)
+      ASSERT (s == vals[i++]);
+
+    stack_t s2 { stk };
+    ASSERT (s2 == stk);
+
+    stack_t s3 { std::move (s2) };
+    ASSERT (stk == s3);
   }
 
   stack_t stk;
@@ -71,19 +87,7 @@ void test_single_threaded ()
   stk.push (mkstr (50));
   ASSERT (stk >= s2);
 
-  {
-    xrcu::stack<int> tmp;
-    int values[] = { 1, 2, 3, 4, 5 };
-    const size_t N = sizeof (values) / sizeof (*values);
-
-    tmp.push (values, values + N);
-    size_t i = 0;
-
-    for (auto val : tmp)
-      ASSERT (val == values[i++]);
-
-    ASSERT (i == N);
-  }
+  ASSERT (!xrcu::in_cs ());
 }
 
 static void

@@ -2,10 +2,8 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title>XRCU documentation</title>
-<link rel="stylesheet" href="x.css" type="text/css" />
+<title>XRCU Documentation</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-<link rev="made" href="mailto:root@localhost" />
 </head>
 <style>
 body {
@@ -533,7 +531,7 @@ td {
 <dt id="template-class-Iter-stack-Iter-first-Iter-last">template &lt;class Iter&gt; stack (Iter first, Iter last);</dt>
 <dd>
 
-<p>Initializes a stack to with the values in the range [<code>first</code>, <code>last</code>)</p>
+<p>Initializes a stack with the values in the range [<code>first</code>, <code>last</code>)</p>
 
 </dd>
 <dt id="stack-std::initializer_listT-lst">stack (std::initializer_list&lt;T&gt; lst);</dt>
@@ -572,10 +570,10 @@ td {
 <p>Pushes <code>n</code> times <code>value</code> to the stack.</p>
 
 </dd>
-<dt id="void-emplace-T-value">void emplace (T&amp;&amp; value);</dt>
+<dt id="templateclass-...Args-void-emplace-Args-...args">template&lt;class ...Args&gt; void emplace (Args&amp;&amp; ...args)</dt>
 <dd>
 
-<p>Same as <code>push</code>, only it constructs a new item by moving instead of copying.</p>
+<p>Same as <code>push</code>, only it constructs a new item by calling the move constructor with <code>args...</code>.</p>
 
 </dd>
 <dt id="optionalT-pop">optional&lt;T&gt; pop ();</dt>
@@ -752,9 +750,9 @@ td {
 
 <h3 id="Implementation-details2">Implementation details</h3>
 
-<p>There really isn&#39;t much to say about the internal details of the stack. It&#39;s probably the easiest lock free structure to implement. As with most other implementations, the one in XRCU consists in an atomic pointer to the top node and an atomic counter to keep track of its size. The use of RCU prevents the biggest issue with this design: The ABA problem.</p>
+<p>There really isn&#39;t much to say about the internal details of the stack. It&#39;s probably the easiest lock free structure to implement. As with most other implementations, the one in XRCU simply consists of an atomic pointer to the top node. The use of RCU prevents the biggest issue with this design, that is, the ABA problem.</p>
 
-<p>The only noteworthy thing to point out is that the <code>swap</code> method is safe to call from multiple threads as well. In order to achive this, the library uses a special <i>sentinel</i> value, that is temporarily set as the head node when a swap is undergoing. During a swap, <code>push</code> and <code>pop</code> cannot proceed, since they check against that special value before modifying the stack.</p>
+<p>The only noteworthy thing to point out is that the <code>swap</code> method is safe to call from multiple threads as well. In order to achive this, the library uses a special <i>sentinel</i> bit, that is temporarily set as the head node when a swap is undergoing. During a swap, <code>push</code> and <code>pop</code> cannot proceed, since they check against that the special bit is not set before modifying the stack.</p>
 
 <p>Note that because stack iterators are implicit critical sections, and because of stacks&#39; implementation, iterating a stack will always be safe, even in the presence of operations like <code>push</code> and <code>pop</code>. The only way for an iterator to be invalidated is it&#39;s at the beggining of the stack, and a call to <code>pop</code> is made. Even then, dereferencing the iterator is valid, but advancing it will end prematurely, since the object was unlinked from the stack.</p>
 

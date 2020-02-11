@@ -43,21 +43,25 @@ void test_single_threaded ()
     for (auto ch : s)
       ASSERT (isdigit (ch));
 
-  const int PIVOT = 572;
-  auto it = sl.lower_bound (mkstr (PIVOT));
-  ASSERT (it != sl.end ());
-  ASSERT (*it == mkstr (PIVOT - 1));
+  {
+    const int PIVOT = 572;
+    auto it = sl.lower_bound (mkstr (PIVOT));
+    ASSERT (it != sl.end ());
+    ASSERT (*it == mkstr (PIVOT - 1));
 
-  it = sl.upper_bound (mkstr (PIVOT));
-  ASSERT (it != sl.end ());
-  ASSERT (*it == mkstr (PIVOT + 1));
+    it = sl.upper_bound (mkstr (PIVOT));
+    ASSERT (it != sl.end ());
+    ASSERT (*it == mkstr (PIVOT + 1));
 
-  sklist_t s2 { std::string ("aaa"), std::string ("bbb"),
-                std::string ("ccc"), std::string ("ddd") };
+    sklist_t s2 { std::string ("aaa"), std::string ("bbb"),
+                  std::string ("ccc"), std::string ("ddd") };
 
-  sl.swap (s2);
-  ASSERT (sl.size () == 4);
-  ASSERT (sl.contains (std::string ("aaa")));
+    sl.swap (s2);
+    ASSERT (sl.size () == 4);
+    ASSERT (sl.contains (std::string ("aaa")));
+  }
+
+  ASSERT (!xrcu::in_cs ());
 }
 
 static void
@@ -65,6 +69,27 @@ mt_inserter (sklist_t *sx, int index)
 {
   for (int i = 0; i < INSERTER_LOOPS; ++i)
     ASSERT (sx->insert (mkstr (index * INSERTER_LOOPS + i)));
+}
+
+static bool
+sl_consistent (sklist_t& sx)
+{
+  if (sx.empty ())
+    return (true);
+
+  auto it = sx.begin ();
+  std::string s1 = *it;
+
+  for (++it; it != sx.end (); ++it)
+    {
+      std::string s2 = *it;
+      if (!(s1 < s2))
+        return (false);
+
+      s1.swap (s2);
+    }
+
+  return (true);
 }
 
 void test_insert_mt ()
@@ -79,6 +104,7 @@ void test_insert_mt ()
     thr.join ();
 
   ASSERT (sx.size () == INSERTER_THREADS * INSERTER_LOOPS);
+  ASSERT (sl_consistent (sx));
 }
 
 static void
@@ -100,6 +126,7 @@ void test_insert_mt_ov ()
     thr.join ();
 
   ASSERT (sx.size () == (INSERTER_THREADS + 1) * INSERTER_LOOPS / 2);
+  ASSERT (sl_consistent (sx));
 }
 
 static void
@@ -156,6 +183,7 @@ void test_erase_mt_ov ()
     thr.join ();
 
   ASSERT (sx.size () == (ERASER_THREADS - 1) * ERASER_LOOPS / 2);
+  ASSERT (sl_consistent (sx));
 }
 
 test_module skip_list_tests

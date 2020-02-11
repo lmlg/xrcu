@@ -365,13 +365,22 @@ Destroys the value associated to the optional, if it had any.
 
 =head3 Implementation details
 
-Optionals are rather simple: They are implemented by using a union that
-supresses the constructor of the template type, and a flag that marks whether
-the optional has a value or not.
+Optionals are rather simple: They are implemented by using a flat buffer
+on which placement new is called. Once an object has been constructed,
+a pointer is cached for the buffer. This pointer will be used when fetching
+the value, or destroying the object (it's null for empty optionals).
 
 Optionals are very useful when performing lookups in mapped containers, since
 they allow us to bypass the need of additional output parameters to determine
 if a search was successful in an atomic way.
+
+Another reason as to why optional values are used so extensively in XRCU is
+because we consider them to be the best way to signal both a valid object,
+as well as an error. When using lock-less data structures, it's impossible to
+determine beforehand whether an error will occur when calling a method (because
+multithreading makes things non deterministic). Throwing an exception was
+considered a bit too "punishing" - it's not precisely a programming error,
+after all.
 
 =head2 Stacks
 
@@ -391,13 +400,16 @@ Stacks are templated types, that can be instantiated with a type T:
   template <class T>
   struct stack
     {
-      struct iterator
-        {
-        };
+      typedef T value_type;
+      typedef T& reference;
+      typedef const T& const_reference;
+      typedef T* pointer;
+      typedef const T* const_pointer;
+      typedef ptrdiff_t difference_type;
+      typedef size_t size_type;
 
-      struct const_iterator
-        {
-        };   
+      struct iterator;
+      struct const_iterator;
     };
 
 In C++'s parlance, a stack iterator is a I<forward> iterator, and it may be
@@ -420,7 +432,7 @@ Initializes a stack to contain C<n> times C<value>.
 
 =item template <class Iter> stack (Iter first, Iter last);
 
-Initializes a stack to with the values in the range [C<first>, C<last>)
+Initializes a stack with the values in the range [C<first>, C<last>)
 
 =item stack (std::initializer_list<T> lst);
 
@@ -446,9 +458,10 @@ Pushes the values in the range [C<first>, C<last>) to the stack.
 
 Pushes C<n> times C<value> to the stack.
 
-=item void emplace (T&& value);
+=item template<class ...Args> void emplace (Args&& ...args)
 
-Same as C<push>, only it constructs a new item by moving instead of copying.
+Same as C<push>, only it constructs a new item by calling the move
+constructor with C<args...>.
 
 =item optional<T> pop ();
 
@@ -512,7 +525,7 @@ Removes every element from the stack.
 
 =item template <class T1, class T2> void assign (T1 x, T2 y);
 
-Assigns to the stack the elements described by (x, y). They could be an
+Assigns to the stack the elements described by (C<x>, C<y>). They could be an
 iterator range, or a pair of (integer, value), as is the case with the stack's
 constructor.
 
@@ -576,15 +589,15 @@ Tests for iterator (in)equality.
 
 There really isn't much to say about the internal details of the stack. It's
 probably the easiest lock free structure to implement. As with most other
-implementations, the one in XRCU consists in an atomic pointer to the top
-node and an atomic counter to keep track of its size. The use of RCU prevents
-the biggest issue with this design: The ABA problem.
+implementations, the one in XRCU simply consists of an atomic pointer to the
+top node. The use of RCU prevents the biggest issue with this design, that is,
+the ABA problem.
 
 The only noteworthy thing to point out is that the C<swap> method is safe to
 call from multiple threads as well. In order to achive this, the library uses
-a special I<sentinel> value, that is temporarily set as the head node when a
+a special I<sentinel> bit, that is temporarily set as the head node when a
 swap is undergoing. During a swap, C<push> and C<pop> cannot proceed, since
-they check against that special value before modifying the stack.
+they check against that the special bit is not set before modifying the stack.
 
 Note that because stack iterators are implicit critical sections, and because
 of stacks' implementation, iterating a stack will always be safe, even in the
@@ -592,6 +605,219 @@ presence of operations like C<push> and C<pop>. The only way for an iterator
 to be invalidated is it's at the beggining of the stack, and a call to C<pop>
 is made. Even then, dereferencing the iterator is valid, but advancing it will
 end prematurely, since the object was unlinked from the stack.
+
+=head2 Queues
+
+    #include <xrcu/queue.hpp>
+
+This is a multi-producer, multi-consumer, FIFO queue. Much like the stack,
+elements can be pushed or popped from it, but the order is different: They
+will be retrieved in the same order they were inserted.
+
+In XRCU, queues meet the requirements for the C++ concept of I<Container>.
+
+=head3 Queue API
+
+Queues are templated types, and they may be instantiated with a type T:
+
+  template <class T>
+  struct queue
+    {
+      typedef T value_type;
+      typedef T& reference;
+      typedef const T& const_reference;
+      typedef T* pointer;
+      typedef const T* const_pointer;
+      typedef ptrdiff_t difference_type;
+      typedef size_t size_type;
+
+      struct iterator;
+      struct const_iterator;
+    };
+
+As with the stack, a queue's iterator can be considered a I<forward> iterator,
+and it's also a C<cs_guard>, so that a queue may be examined by an iterator,
+at any time.
+
+The following describes the public interface for C<queue<TE<gt>>
+
+=over 4
+
+=item queue ();
+
+Default constructor. Initializes a queue to be empty.
+
+=item template <class Integer> queue (Integer n, T value);
+
+Initializes a queue to contain C<n> times C<value>.
+
+=item template <class Iter> queue (Iter first, Iter last);
+
+Initializes a queue with the values in the range [C<first>, C<last>).
+
+=item queue (std::initializer_list<T> lst);
+
+Initializes a queue with the values in C<lst>.
+
+=item queue (const queue<T>& other);
+
+Copy constructor. Initializes a queue with the values in C<other>.
+
+=item queue (queue<T>&& other);
+
+Move constructor. Takes ownership of the values in C<other>.
+
+=item void push (const T& value);
+
+Pushes C<value> to the top of the queue.
+
+=item template <class ...Args> void emplace (Args&& ...args)
+
+Same as C<push>, only the new item is constructed by calling the move
+constructor with C<args...>.
+
+=item optional<T> pop ();
+
+Removes the first item from the queue, and returns an optional with that value.
+If the queue is empty, the method returns an optional with no value.
+
+=item optional<T> front () const;
+
+Returns an optional with the first value from the queue. If the queue is empty,
+an optional with no value is returned instead.
+
+=item optional<T> back () const;
+
+Returns an optional with the last value from the queue. If the queue is empty,
+an optional with no value is returned instead.
+
+=item size_type size () const;
+
+Returns the size of the queue.
+
+=item size_type max_size () const;
+
+Returns the maximum allowed size for the queue.
+
+=item void swap (queue<T>& other);
+
+Swaps the contents of the queue with C<other>, but only if C<other> is not
+the same object.
+
+=item queue<T>& operator= (const queue<T>& other);
+
+Assigns the contents of C<other> to the queue and returns C<*this>.
+
+=item queue<T>& operator= (queue<T>&& other);
+
+Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
+
+=item bool operator== (const queue<T>& other);
+
+Compares the elements of the queue with the ones in C<other>. Returns true
+if they are all equal.
+
+=item bool operator!= (const queue<T>& other);
+
+Compares the elements of the queue with the ones in C<other>. Returns true
+if any two of them are not equal.
+
+=item bool operator<  (const queue<T>& other) const;
+
+=item bool operator>  (const queue<T>& other) const;
+
+=item bool operator<= (const queue<T>& other) const;
+
+=item bool operator>= (const queue<T>& other) const;
+
+Lexicographically compares the elements of the queue with the ones in C<other>,
+in a way that is equivalent to calling C<std::lexicographical_compare>.
+
+=item void clear ();
+
+Removes every element from the queue.
+
+=item template <class T1, class T2> void assign (T1 x, T2 y);
+
+Assigns to the queue the elements described by (C<x>, C<y>). They can be an
+iterator range or a pair of (integer, value), as is the case with the queue's
+constructor.
+
+=item void assign (std::initializer_list<T> lst);
+
+Assigns to the queue the elements in C<lst>.
+
+=item iterator begin ();
+
+=item const_iterator cbegin () const;
+
+Returns an iterator to the first element of the queue.
+
+=item iterator end ();
+
+=item const_iterator cend () const;
+
+Returns an iterator one past the last element of the queue.
+
+=item iterator::iterator ();
+
+Default constructor for queue iterators. Leaves the object in an invalid state.
+Dereferencing or incrementing such an iterator has undefined behavior.
+
+=item iterator::iterator (const iterator& other);
+
+Copy constructor. Initializes the iterator to be equal to C<other>.
+
+=item const T& iterator::operator* ();
+
+=item const T& const_iterator::operator* () const;
+
+Returns a const reference to the iterator's underlying object.
+
+=item iterator& iterator::operator++ ();
+
+Pre-increment operator. Moves the iterator forward, and returns it. If the
+iterator was at the end of the stack, the results are undefined.
+
+=item iterator iterator::operator++ (int);
+
+Post-increment operator. Moves the iterator forward, and returns an iterator
+equal to what it was before incrementing. If the iterator was at the end of
+the stack, the results are undefined.
+
+=item bool iterator::operator== (const iterator& other);
+
+=item bool iterator::operator!= (const iterator& other);
+
+Tests for iterator (in)equality.
+
+=back
+
+=head3 Implementation details
+
+The design of the multi-producer, multi-consumer queue in XRCU is rather
+simple and different from other implementations. It consists of a single array
+that holds either the elements themselvers, or pointers to them, a decision
+taken at compile time via type traits.
+
+In addition to the vector, the queue is composed of three additional counters:
+the capacity, a read cursor and a write cursor. The capacity is static, and
+simply stores the raw number of elements that the queue can hold before it's
+forced to reallocate. The read and write cursors and indices that indicate
+at which positions the C<pop> and C<push> or C<emplace> operations may take
+place.
+
+When an element is pushed into a queue, the write cursor is checked against
+the capacity. If the queue is full, then it must be reallocated. This is done
+by marking each element with a special bit, allocating a new queue and then
+copying over the elements. If there's room in the queue, the element is
+atomically set via compare-and-swap, and if successful, the write cursor is
+also updated atomically.
+
+Popping elements proceeds in a similar way. The read cursor is compared against
+the write cursor, and returns prematurely with failure if there are no more
+elements to pop. Otherwise, it's atomically replaced with a special marker,
+after which the read cursor is updated.
 
 =head2 Skip lists
 
@@ -611,13 +837,19 @@ Skip lists are templated types, defined in the following way:
     template <class T, class Cmp = std::less<T> >
     struct skip_list
       {
-        struct iterator
-          {
-          };
+        typedef T value_type;
+        typedef T key_type;
+        typedef Cmp key_compare;
+        typedef Cmp value_compare;
+        typedef T& reference;
+        typedef const T& const_reference;
+        typedef T* pointer;
+        typedef const T* const_pointer;
+        typedef ptrdiff_t difference_type;
+        typedef size_t size_type;
 
-        struct const_iterator
-          {
-          };
+        struct iterator;
+        struct const_iterator;
       };
 
 The template parameter C<T> refers to the key type, whereas C<Cmp> is the
@@ -698,11 +930,11 @@ Returns an iterator to the first element of the skip list.
 
 Returns an iterator one past the last element of the skip list.
 
-=item size_t size () const;
+=item size_type size () const;
 
 Returns the current size of the skip list.
 
-=item size_t max_size () const;
+=item size_type max_size () const;
 
 Returns the maximum allowed size for a skip list.
 
@@ -789,13 +1021,20 @@ As mentioned above, hash tables are template types, defined like this:
               class Hash = std::hash<Key> >
     struct hash_table
       {
-        struct iterator
-          {
-          };
+        typedef Val mapped_type;
+        typedef Key key_type;
+        typedef std::pair<Key, Val> value_type;
+        typedef Equal key_equal;
+        typedef Hash hasher;
+        typedef value_type& reference;
+        typedef const value_type& const_reference;
+        typedef value_type* pointer;
+        typedef const value_type* const_pointer;
+        typedef ptrdiff_t difference_type;
+        typedef size_t size_type;
 
-        struct const_iterator
-          {
-          };
+        struct iterator;
+        struct const_iterator;
       };
 
 The template parameters should be pretty self explanatory: They refer to the

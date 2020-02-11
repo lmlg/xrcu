@@ -8,77 +8,72 @@ namespace xrcu
 namespace detail
 {
 
-static stack_node_base* const NODE_SPIN = (stack_node_base *)1;
+static const uintptr_t SPIN_BIT = 1;
 
-stack_node_base* stack_base::root () const
+static inline bool
+node_spinning_p (const stack_node_base *np)
 {
-  while (true)
-    {
-      auto ret = this->rnode.load (std::memory_order_relaxed);
-      if (ret != NODE_SPIN)
-        return (ret);
-
-      xatomic_spin_nop ();
-    }
+  return (((uintptr_t)np) & SPIN_BIT);
 }
 
-void stack_base::push_node (stack_node_base *nodep)
+static inline stack_node_base*
+get_node (const stack_node_base::ptr_type& head)
+{
+  return (head.load (std::memory_order_relaxed));
+}
+
+stack_node_base* stack_node_base::root (const ptr_type& head)
+{
+  auto ret = (uintptr_t)get_node (head);
+  return (((stack_node_base *)(ret & ~SPIN_BIT)));
+}
+
+void stack_node_base::push (ptr_type& head, stack_node_base *nodep)
 {
   while (true)
     {
-      nodep->next = this->rnode.load (std::memory_order_relaxed);
-
-      if (nodep->next != NODE_SPIN &&
-          this->rnode.compare_exchange_weak (nodep->next, nodep,
+      nodep->next = get_node (head);
+      if (!node_spinning_p (nodep->next) &&
+          head.compare_exchange_weak (nodep->next, nodep,
             std::memory_order_acq_rel, std::memory_order_relaxed))
+        break;
+
+      xatomic_spin_nop ();
+    }
+}
+
+void stack_node_base::push (ptr_type& head,
+  stack_node_base *nodep, stack_node_base **outp)
+{
+  while (true)
+    {
+      auto tmp = get_node (head);
+      if (!node_spinning_p (tmp))
         {
-          this->size.fetch_add (1, std::memory_order_relaxed);
-          break;
+          *outp = tmp;
+          if (head.compare_exchange_weak (tmp, nodep,
+              std::memory_order_acq_rel, std::memory_order_relaxed))
+            break;
         }
 
       xatomic_spin_nop ();
     }
 }
 
-void stack_base::push_nodes (stack_node_base *nodep,
-  stack_node_base **outp, size_t cnt)
+stack_node_base* stack_node_base::pop (ptr_type& head)
 {
   while (true)
     {
-      auto tmp = this->rnode.load (std::memory_order_relaxed);
-      if (tmp == NODE_SPIN)
-        {
-          xatomic_spin_nop ();
-          continue;
-        }
-
-     *outp = tmp;
-     if (this->rnode.compare_exchange_weak (tmp, nodep,
-         std::memory_order_acq_rel, std::memory_order_relaxed))
-       {
-         this->size.fetch_add (cnt, std::memory_order_relaxed);
-         break;
-       }
-    }
-}
-
-stack_node_base* stack_base::pop_node ()
-{
-  cs_guard g;
-
-  while (true)
-    {
-      auto np = this->rnode.load (std::memory_order_relaxed);
-
-      if (np == NODE_SPIN)
+      auto nodep = get_node (head);
+      if (node_spinning_p (nodep))
         ;
-      else if (np == nullptr)
-        return (np);
-      else if (this->rnode.compare_exchange_weak (np, np->next,
+      else if (!nodep)
+        return (nodep);
+      else if (head.compare_exchange_weak (nodep, nodep->next,
           std::memory_order_acq_rel, std::memory_order_relaxed))
         {
-          this->size.fetch_sub (1, std::memory_order_release);
-          return (np);
+          nodep->next = nullptr;
+          return (nodep);
         }
 
       xatomic_spin_nop ();
@@ -86,33 +81,45 @@ stack_node_base* stack_base::pop_node ()
 }
 
 static inline stack_node_base*
-set_spin (std::atomic<stack_node_base *>& rn)
+set_spin (stack_node_base::ptr_type& head)
 {
   while (true)
     {
-      stack_node_base *tmp = rn.load (std::memory_order_relaxed);
-      if (tmp != NODE_SPIN && rn.compare_exchange_weak (tmp, NODE_SPIN,
-          std::memory_order_acq_rel, std::memory_order_release))
+      auto tmp = get_node (head);
+      if (!node_spinning_p (tmp) &&
+          head.compare_exchange_weak (tmp,
+            (stack_node_base *)((uintptr_t)tmp | SPIN_BIT),
+            std::memory_order_acq_rel, std::memory_order_relaxed))
         return (tmp);
 
       xatomic_spin_nop ();
     }
 }
 
-void stack_base::swap (stack_base& right)
+void stack_node_base::swap (ptr_type& h1, ptr_type& h2)
 {
   // Prevent any further modifications.
-  auto ln = set_spin (this->rnode), rn = set_spin (right.rnode);
+  auto ln = set_spin (h1), rn = set_spin (h2);
 
-  // Swap the sizes.
-  size_t sz = this->size.load (std::memory_order_relaxed);
-  this->size.store (right.size.load (std::memory_order_relaxed),
-                    std::memory_order_release);
-  right.size.store (sz, std::memory_order_release);
+  // Swap the root nodes.
+  h1.store (rn, std::memory_order_release);
+  h2.store (ln, std::memory_order_release);
+}
 
-  // And finally, swap the root nodes.
-  this->rnode.store (rn, std::memory_order_release);
-  right.rnode.store (ln, std::memory_order_release);
+stack_node_base* stack_node_base::clear (ptr_type& head)
+{
+  auto ret = set_spin (head);
+  head.store (nullptr, std::memory_order_release);
+  return (ret);
+}
+
+size_t stack_node_base::size (const ptr_type& head)
+{
+  auto runp = get_node (head);
+  size_t ret = 0;
+
+  for (; runp; runp = runp->next, ++ret) ;
+  return (ret);
 }
 
 } } // namespaces
