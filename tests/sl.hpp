@@ -71,6 +71,27 @@ mt_inserter (sklist_t *sx, int index)
     ASSERT (sx->insert (mkstr (index * INSERTER_LOOPS + i)));
 }
 
+static bool
+sl_consistent (sklist_t& sx)
+{
+  if (sx.empty ())
+    return (true);
+
+  auto it = sx.begin ();
+  std::string s1 = *it;
+
+  for (++it; it != sx.end (); ++it)
+    {
+      std::string s2 = *it;
+      if (!(s1 < s2))
+        return (false);
+
+      s1.swap (s2);
+    }
+
+  return (true);
+}
+
 void test_insert_mt ()
 {
   sklist_t sx;
@@ -83,6 +104,7 @@ void test_insert_mt ()
     thr.join ();
 
   ASSERT (sx.size () == INSERTER_THREADS * INSERTER_LOOPS);
+  ASSERT (sl_consistent (sx));
 }
 
 static void
@@ -104,6 +126,7 @@ void test_insert_mt_ov ()
     thr.join ();
 
   ASSERT (sx.size () == (INSERTER_THREADS + 1) * INSERTER_LOOPS / 2);
+  ASSERT (sl_consistent (sx));
 }
 
 static void
@@ -160,6 +183,7 @@ void test_erase_mt_ov ()
     thr.join ();
 
   ASSERT (sx.size () == (ERASER_THREADS - 1) * ERASER_LOOPS / 2);
+  ASSERT (sl_consistent (sx));
 }
 
 test_module skip_list_tests

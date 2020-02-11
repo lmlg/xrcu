@@ -87,6 +87,19 @@ mt_inserter (table_t *tx, int index)
     }
 }
 
+static bool
+ht_consistent (table_t& tx)
+{
+  if (tx.empty ())
+    return (true);
+
+  for (auto p : tx)
+    if (mkstr (p.first) != p.second)
+      return (false);
+
+  return (true);
+}
+
 void test_insert_mt ()
 {
   table_t tx;
@@ -99,6 +112,7 @@ void test_insert_mt ()
     thr.join ();
 
   ASSERT (tx.size () == INSERTER_THREADS * INSERTER_LOOPS);
+  ASSERT (ht_consistent (tx));
 }
 
 static void
@@ -123,6 +137,7 @@ void test_insert_mt_ov ()
     thr.join ();
 
   ASSERT (tx.size () == (INSERTER_THREADS + 1) * INSERTER_LOOPS / 2);
+  ASSERT (ht_consistent (tx));
 }
 
 static void
