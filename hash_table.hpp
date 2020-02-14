@@ -710,9 +710,27 @@ struct hash_table
 
   void clear ()
     {
-      size_t pidx, gt = detail::find_hsize (0, this->loadf, pidx);
-      auto nv = detail::make_htvec (pidx, key_traits::FREE, val_traits::FREE);
-      this->_Assign_vector (nv, gt);
+      this->lock.acquire ();
+
+      for (size_t i = detail::table_idx (0); i < this->vec->size (); i += 2)
+        {
+          uintptr_t k = this->vec->data[i];
+          this->vec->data[i] = key_traits::FREE;
+          std::atomic_thread_fence (std::memory_order_release);
+
+          uintptr_t v = xatomic_swap (&this->vec->data[i + 1],
+                                      val_traits::FREE) & ~val_traits::XBIT;
+
+          if (k != key_traits::FREE && k != key_traits::DELT)
+            key_traits::destroy (k);
+          if (v != val_traits::FREE && v != val_traits::DELT)
+            val_traits::destroy (v);
+        }
+
+      this->grow_limit.store ((intptr_t)(this->loadf * this->size ()),
+                              std::memory_order_relaxed);
+      this->vec->nelems.store (0, std::memory_order_release);
+      this->lock.release ();
     }
 
   template <class Iter>
