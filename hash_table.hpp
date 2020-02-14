@@ -421,11 +421,17 @@ struct hash_table
 
   bool _Decr_limit ()
     {
-      if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
-        return (false);
+      while (true)
+        {
+          auto limit = this->grow_limit.load (std::memory_order_relaxed);
+          if (limit <= 0)
+            return (false);
+          else if (this->grow_limit.compare_exchange_weak (limit, limit - 1,
+              std::memory_order_acq_rel, std::memory_order_relaxed))
+            return (true);
 
-      this->grow_limit.fetch_sub (1, std::memory_order_acq_rel);
-      return (true);
+          xatomic_spin_nop ();
+        }
     }
 
   template <class Fn, class ...Args>
@@ -711,6 +717,7 @@ struct hash_table
   void clear ()
     {
       this->lock.acquire ();
+      this->grow_limit.store (0, std::memory_order_release);
 
       for (size_t i = detail::table_idx (0); i < this->vec->size (); i += 2)
         {
