@@ -146,7 +146,7 @@ struct skip_list
       return (_Self::_Node(addr)->nlvl);
     }
 
-  uintptr_t* _Root_plen (uintptr_t addr)
+  static uintptr_t* _Root_plen (uintptr_t addr)
     {
       return (_Self::_Node(addr)->next - 1);
     }
@@ -466,7 +466,7 @@ struct skip_list
           return (false);
         }
 
-      this->_Bump_len (this->_Root_plen (xroot), 1);
+      this->_Bump_len (_Self::_Root_plen (xroot), 1);
       return (true);
     }
 
@@ -509,7 +509,7 @@ struct skip_list
 
       // Unlink the item.
       this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
-      this->_Bump_len (this->_Root_plen (xroot), -1);
+      this->_Bump_len (_Self::_Root_plen (xroot), -1);
       finalize (nodep);
       return (it);
     }
@@ -595,7 +595,7 @@ struct skip_list
       cs_guard g;
       while (true)
         {
-          auto ptr = this->_Root_plen ((uintptr_t)
+          auto ptr = _Self::_Root_plen ((uintptr_t)
             this->head.load (std::memory_order_relaxed));
           auto val = *ptr;
 
@@ -652,8 +652,8 @@ struct skip_list
       this->head.store (rh, std::memory_order_relaxed);
       right.head.store (lh, std::memory_order_relaxed);
 
-      xatomic_and (this->_Root_plen ((uintptr_t)rh), ~(uintptr_t)1);
-      xatomic_and (right._Root_plen ((uintptr_t)lh), ~(uintptr_t)1);
+      xatomic_and (_Self::_Root_plen ((uintptr_t)rh), ~(uintptr_t)1);
+      xatomic_and (_Self::_Root_plen ((uintptr_t)lh), ~(uintptr_t)1);
     }
 
   void clear ()
