@@ -209,19 +209,19 @@ struct key_handler
 
   static void fini (void *ptr)
     {
-	  ((tl_data *)ptr)->~tl_data ();
-	}
+      ((tl_data *)ptr)->~tl_data ();
+    }
 
   key_handler ()
     {
-	  if (pthread_key_create (&this->key, key_handler::fini) != 0)
-	    throw "failed to create thread key";
-	}
+      if (pthread_key_create (&this->key, key_handler::fini) != 0)
+        throw "failed to create thread key";
+    }
 
   void set (void *ptr)
     {
-	  pthread_setspecific (this->key, ptr);
-	}
+      pthread_setspecific (this->key, ptr);
+    }
 };
 
 struct alignas (alignof (tl_data)) tl_buf
