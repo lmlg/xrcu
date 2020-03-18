@@ -693,4 +693,15 @@ struct queue
 
 } // namespace xrcu
 
+namespace std
+{
+
+template <class T>
+void swap (xrcu::queue<T>& left, xrcu::queue<T>& right)
+{
+  left.swap (right);
+}
+
+} // namespace std
+
 #endif
