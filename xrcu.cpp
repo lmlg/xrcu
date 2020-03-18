@@ -9,6 +9,17 @@
 #include <ctime>
 #include <functional>
 
+#if defined (__MINGW32__) || defined (__MINGW64__)
+  #include <pthread.h>
+
+static void tl_set (void *);
+
+#else
+
+#  define tl_set(p)
+
+#endif
+
 namespace xrcu
 {
 
@@ -87,6 +98,7 @@ struct registry
 
   void add_tdata (td_link *lp)
     {
+	  tl_set (lp);
       this->td_mtx.lock ();
       lp->add (&this->root);
       this->td_mtx.unlock ();
@@ -187,7 +199,45 @@ struct tl_data : public td_link
     }
 };
 
+#if defined (__MINGW32__) || defined (__MINGW64__)
+
+// Mingw has problems with thread_local destructors.
+
+struct key_handler
+{
+  pthread_key_t key;
+
+  static void fini (void *ptr)
+    {
+	  ((tl_data *)ptr)->~tl_data ();
+	}
+
+  key_handler ()
+    {
+	  if (pthread_key_create (&this->key, key_handler::fini) != 0)
+	    throw "failed to create thread key";
+	}
+
+  void set (void *ptr)
+    {
+	  pthread_setspecific (this->key, ptr);
+	}
+};
+
+struct alignas (alignof (tl_data)) tl_buf
+{
+  unsigned char data[sizeof (tl_data)];
+};
+
+static thread_local tl_buf tlbuf;
+
+#define tldata   (*(tl_data *)&tlbuf)
+
+#else
+
 static thread_local tl_data tldata {};
+
+#endif
 
 static inline tl_data*
 local_data ()
@@ -371,4 +421,15 @@ void library_version (int& major, int& minor)
 }
 
 } // namespace rcu
+
+#if defined (__MINGW32__) || defined (__MINGW64__)
+
+static void
+tl_set (void *ptr)
+{
+  static xrcu::key_handler handler;
+  handler.set (ptr);
+}
+
+#endif
 

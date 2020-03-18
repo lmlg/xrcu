@@ -1,10 +1,20 @@
-STATIC_LIBS = libxrcu.a
-SHARED_LIBS = libxrcu.so
+ifeq ($(OS), Windows_NT)
+	PIC_FLAG =
+	STATIC_EXT = lib
+	DYNAMIC_EXT = dll
+else
+	PIC_FLAG = -fPIC
+	STATIC_EXT = a
+	DYNAMIC_EXT = so
+endif
+
+STATIC_LIBS = libxrcu.$(STATIC_EXT)
+SHARED_LIBS = libxrcu.$(DYNAMIC_EXT)
 
 HEADERS = xrcu.hpp stack.hpp hash_table.hpp skip_list.hpp   \
           xatomic.hpp lwlock.hpp optional.hpp queue.hpp
 
-OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o
+OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o utils.o
 LOBJS = $(OBJS:.o=.lo)
 
 TEST_OBJS = $(LOBJS)
@@ -27,14 +37,14 @@ check: $(TEST_OBJS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 %.lo: %.cpp $(HEADERS)
-	$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(PIC_FLAG) -c $< -o $@
 
-libxrcu.a: $(OBJS)
+libxrcu.$(STATIC_EXT): $(OBJS)
 	rm -f $@
 	$(AR) rc $@ $(OBJS)
 	$(RANLIB) $@
 
-libxrcu.so: $(LOBJS)
+libxrcu.$(DYNAMIC_EXT): $(LOBJS)
 	$(CXX) -fPIC -shared $(CXXFLAGS) -o $@ $(LOBJS)
 
 install: $(ALL_LIBS)

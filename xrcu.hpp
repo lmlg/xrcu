@@ -24,7 +24,7 @@ struct finalizable
 
   virtual void safe_destroy ()
     {
-      delete this;
+      ::delete this;
     }
 
   virtual ~finalizable () {}

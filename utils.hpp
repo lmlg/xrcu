@@ -2,6 +2,8 @@
 #define __XRCU_UTILS_HPP__   1
 
 #include "xrcu.hpp"
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
 namespace xrcu
@@ -9,6 +11,15 @@ namespace xrcu
 
 namespace detail
 {
+
+void* alloc_wrapped (size_t size);
+void dealloc_wrapped (void *ptr);
+
+template <class T>
+void destroy (void *ptr)
+{
+  ((T *)ptr)->~T ();
+}
 
 template <class T>
 struct alignas (8) type_wrapper : public finalizable
@@ -22,6 +33,12 @@ struct alignas (8) type_wrapper : public finalizable
   template <class ...Args>
   type_wrapper (Args&&... args) : value (std::forward<Args>(args)...)
     {
+    }
+
+  void safe_destroy ()
+    {
+      destroy<T> (&this->value);
+      dealloc_wrapped (this);
     }
 };
 
@@ -54,36 +71,67 @@ struct wrapped_traits<false, T>
   static const uintptr_t FREE = 2;
   static const uintptr_t DELT = 4;
   typedef T value_type;
+  typedef type_wrapper<T> wrapped_type;
 
   static uintptr_t make (const T& val)
     {
-      return ((uintptr_t)(new type_wrapper<T> (val)));
+      auto rv = (wrapped_type *)alloc_wrapped (sizeof (wrapped_type));
+      try
+        {
+          new (rv) wrapped_type (val);
+          return ((uintptr_t)rv);
+        }
+      catch (...)
+        {
+          dealloc_wrapped (rv);
+          throw;
+        }
     }
 
   template <class ...Args>
   static uintptr_t make (Args&&... args)
     {
-      return ((uintptr_t)(new type_wrapper<T> (std::forward<Args>(args)...)));
+      auto rv = (wrapped_type *)alloc_wrapped (sizeof (wrapped_type));
+      try
+        {
+          new (rv) wrapped_type (std::forward<Args>(args)...);
+          return ((uintptr_t)rv);
+        }
+      catch (...)
+        {
+          dealloc_wrapped (rv);
+          throw;
+        }
     }
 
   static uintptr_t make (T&& val)
     {
-      return ((uintptr_t)(new type_wrapper<T> (std::forward<T&&> (val))));
+      auto rv = (wrapped_type *)alloc_wrapped (sizeof (wrapped_type));
+      try
+        {
+          new (rv) wrapped_type (std::forward<T&&> (val));
+          return ((uintptr_t)rv);
+        }
+      catch (...)
+        {
+          dealloc_wrapped (rv);
+          throw;
+        }
     }
 
   static T& get (uintptr_t addr)
     {
-      return (((type_wrapper<T> *)(addr & ~XBIT))->value);
+      return (((wrapped_type *)(addr & ~XBIT))->value);
     }
 
   static void destroy (uintptr_t addr)
     {
-      finalize ((type_wrapper<T> *)addr);
+      finalize ((wrapped_type *)addr);
     }
 
   static void free (uintptr_t addr)
     {
-      delete (type_wrapper<T> *)addr;
+      ((wrapped_type *)addr)->safe_destroy ();
     }
 };
 
