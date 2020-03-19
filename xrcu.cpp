@@ -98,7 +98,7 @@ struct registry
 
   void add_tdata (td_link *lp)
     {
-	  tl_set (lp);
+      tl_set (lp);
       this->td_mtx.lock ();
       lp->add (&this->root);
       this->td_mtx.unlock ();
