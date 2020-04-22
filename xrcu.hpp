@@ -1,3 +1,20 @@
+/* Declarations for the RCU API.
+
+   This file is part of xrcu.
+
+   khipu is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
+
 #ifndef __XRCU_HPP__
 #define __XRCU_HPP__   1
 
@@ -53,9 +70,9 @@ struct cs_guard
 // Miscellaneous functions that don't belong anywhere else.
 struct atfork
 {
-  void (*prepare) (void);
-  void (*parent) (void);
-  void (*child) (void);
+  void (*prepare) ();
+  void (*parent) ();
+  void (*child) ();
 };
 
 // Fetch the `pthread_atfork' callbacks for XRCU.
