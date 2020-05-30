@@ -84,27 +84,29 @@ static_assert (sizeof (uintptr_t) == sizeof (std::atomic_uintptr_t) &&
   alignof (uintptr_t) == alignof (std::atomic_uintptr_t),
   "unsupported compiler (uintptr_t and atomic_uintptr_t mismatch)");
 
+#define AS_ATOMIC(x)   ((std::atomic_uintptr_t *)(x))
+
 inline uintptr_t
 xatomic_cas (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 {
-  reinterpret_cast<std::atomic_uintptr_t&>(ptr).compare_exchange_weak
-    (exp, nval, std::memory_order_acq_rel, std::memory_order_relaxed);
+  AS_ATOMIC(ptr)->compare_exchange_weak (exp, nval,
+    std::memory_order_acq_rel, std::memory_order_relaxed);
   return (exp);
 }
 
 inline uintptr_t
 xatomic_swap (uintptr_t *ptr, uintptr_t val)
 {
-  return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).exchange
-    (ptr, val, std::memory_order_acq_rel));
+  return (AS_ATOMIC(ptr)->exchange (val, std::memory_order_acq_rel));
 }
 
 inline uintptr_t
 xatomic_add (uintptr_t *ptr, intptr_t val)
 {
-  return (reinterpret_cast<std::atomic_uintptr_t&>(ptr).fetch_add
-    (ptr, val, std::memory_order_acq_rel));
+  return (AS_ATOMIC(ptr)->fetch_add (val, std::memory_order_acq_rel));
 }
+
+#undef AS_ATOMIC
 
 inline uintptr_t
 xatomic_or (uintptr_t *ptr, uintptr_t val)
