@@ -1,8 +1,10 @@
+<?xml version="1.0" ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <title>XRCU documentation</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:" />
 <style>
 body {
    color: black;
@@ -149,7 +151,6 @@ td {
 </head>
 <body>
 
-
 <ul id="index">
   <li><a href="#NAME">NAME</a></li>
   <li><a href="#ABOUT-THIS-DOCUMENT">ABOUT THIS DOCUMENT</a></li>
@@ -217,7 +218,7 @@ td {
 
 <p>The usually mentioned advantage of lock freedom is performance. When you are using lock free algorithms, you naturally avoid using things like mutexes, which can have a non-negligible performance impact. On the other hand, other people point out that lock free algorithms are typically harder to understand, that debugging is notoriously difficult, and that the benefits generally do not compensate for these complexities.</p>
 
-<p>The reason why this library was developed is to give other programmers another option when designing high performant, low latency systems. We do not claim that lock freedom is a silver bullet when it comes to making programs faster. On the other hand, it&#39;s also hard to argue that lock contention tends to be a real bottleneck, and several projects have moved towards lock free structures given the performance benefits they bring (see for example, many kernels).</p>
+<p>The reason why this library was developed is to give other programmers another option when designing high performant, low latency systems. We do not claim that lock freedom is a silver bullet when it comes to making programs faster. However, it&#39;s also hard to argue that lock contention tends to be a real bottleneck, and several projects have moved towards lock free structures given the performance benefits they bring (see for example, many kernels).</p>
 
 <h1 id="ABOUT-RCU">ABOUT RCU</h1>
 
@@ -239,7 +240,7 @@ td {
 
 <p>XRCU uses some thread-specific data in order to function properly. There may be some systems that have issues when dynamically loading libraries that use thread-specific data (I believe Windows Vista was among them). Consult with your working environment&#39;s manual to verify that if you notice any problem.</p>
 
-<p>Finally, it should be mentioned that XRCU requires no initializatio or cleanup at a library level to function properly. Once the library is installed, you can freely use its API without any further action needed.</p>
+<p>Finally, it should be mentioned that XRCU requires no initialization or cleanup at a library level to function properly. Once the library is installed, you can freely use its API without any further action needed.</p>
 
 <p>Note that XRCU may expose more functions or types that are specified in this document. This is usually done to avoid code bloat. Anything that isn&#39;t included in this file should be treated as private and subject to change.</p>
 
@@ -253,7 +254,7 @@ td {
 
 <p>RCU is based on the concept of <i>critical sections</i>, code fragments that are executed under the guarantee that no reclamation can take place. This allows the user to safely read from shared memory, knowing that it will be valid during the critical section. Writes have to be synchronized independently of RCU, however.</p>
 
-<p>Naturally, RCU critical sections don&#39;t prevent <i>all</i> memory reclamation, they only affect the destruction of objects that are derived from a type defined in XRCU, called <code>finalizable</code>. If you wish to use the RCU API, all you need to do is make your types derive from <code>finalizable</code> and use its API, and you&#39;ll be set. Any other memory management function, like <code>malloc</code> and friends is unaffected by RCU as implemented in this library.</p>
+<p>Naturally, RCU critical sections don&#39;t prevent <i>all</i> memory reclamation, they only affect the destruction of objects that are derived from a type defined in XRCU, called <code>finalizable</code>. If you wish to use the RCU API, all you need to do is make your types derive from <code>finalizable</code> and use its API, and you&#39;ll be set. Any other memory management functions, like <code>malloc</code> and friends are unaffected by RCU as implemented in this library.</p>
 
 <p>Critical sections are managed through the following API:</p>
 
@@ -493,13 +494,13 @@ td {
 
 <pre><code>  #include &lt;xrcu/stack.hpp&gt;</code></pre>
 
-<p>Stacks are the simplest of the lock-free data structures: They represent a basic LIFO stack on which you can push and pop items, one at a time. Although their functionality is a bit more limited than other structures, they are still very useful to implement things like atomic free lists.</p>
+<p>Stacks are the simplest of the lock-free data structures: They represent a basic LIFO container on which you can push and pop items at the back of the stack. Although their functionality is a bit more limited than other structures, they are still very useful to implement things like atomic free lists.</p>
 
 <p>In XRCU, stacks meet the requirements for the C++ concept of <i>Container</i>.</p>
 
 <h3 id="Stack-API">Stack API</h3>
 
-<p>Stacks are templated types, that can be instantiated with a type T:</p>
+<p>Stacks are templated types that can be instantiated with a type T:</p>
 
 <pre><code>  template &lt;class T&gt;
   struct stack
@@ -1011,7 +1012,7 @@ td {
 
 <p>The design of the multi-producer, multi-consumer queue in XRCU is rather simple and different from other implementations. It consists of a single array that holds either the elements themselvers, or pointers to them, a decision taken at compile time via type traits.</p>
 
-<p>In addition to the vector, the queue is composed of three additional counters: the capacity, a read cursor and a write cursor. The capacity is static, and simply stores the raw number of elements that the queue can hold before it&#39;s forced to reallocate. The read and write cursors and indices that indicate at which positions the <code>pop</code> and <code>push</code> or <code>emplace</code> operations may take place.</p>
+<p>In addition to the vector, the queue is composed of three additional counters: the capacity, a read cursor and a write cursor. The capacity is static, and simply stores the raw number of elements that the queue can hold before it&#39;s forced to reallocate. The read and write cursors are indices that indicate at which positions the <code>pop</code> and <code>push</code> (or <code>emplace</code>) operations may take place.</p>
 
 <p>When an element is pushed into a queue, the write cursor is checked against the capacity. If the queue is full, then it must be reallocated. This is done by marking each element with a special bit, allocating a new queue and then copying over the elements. If there&#39;s room in the queue, the element is atomically set via compare-and-swap, and if successful, the write cursor is also updated atomically.</p>
 
@@ -1049,7 +1050,7 @@ td {
 
 <p>The template parameter <code>T</code> refers to the key type, whereas <code>Cmp</code> is the comparator type, which defaults to <code>std::less</code>. Under most circumstances, that is usually enough, but users may instantiate with any other type that defines the <code>operator()</code> which returns a boolean.</p>
 
-<p>As shown above, skip list has iterators, but they are non-const in all cases, for practicality reasons. Much like with stacks, skip list iterators are <i>forward</i> iterators, and an implicit <code>cs_guard</code>.</p>
+<p>As shown above, skip_list has iterators, but they are always constant, for practicality reasons. Much like with other containers, skip list iterators are <i>forward</i> iterators, and an implicit <code>cs_guard</code>.</p>
 
 <p>The following describes the public interface for <code>skip_list&lt;T, Cmp&gt;</code></p>
 
@@ -1321,7 +1322,7 @@ td {
 
 <p>Note that the function takes a <i>reference</i> to the value, and so it&#39;s possible to modify it in place. Additionally, if the function returns the very same object that was passed (i.e: the same reference that it received), there won&#39;t be any updates made. The function can also return a freshly made object, and <code>update</code> will work the same. The function may be called more than once if the atomic updates fail.</p>
 
-<p>Returns true if <code>key</code> was present in the hash table before the call.</p>
+<p>Returns true if <code>key</code> was not present in the hash table before the call.</p>
 
 </dd>
 <dt id="bool-erase-const-Key-key">bool erase (const Key&amp; key);</dt>
