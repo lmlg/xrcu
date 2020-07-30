@@ -31,8 +31,8 @@ not compensate for these complexities.
 The reason why this library was developed is to give other programmers another
 option when designing high performant, low latency systems. We do not claim
 that lock freedom is a silver bullet when it comes to making programs faster.
-On the other hand, it's also hard to argue that lock contention tends to be a
-real bottleneck, and several projects have moved towards lock free structures
+However, it's also hard to argue that lock contention tends to be a real
+bottleneck, and several projects have moved towards lock free structures
 given the performance benefits they bring (see for example, many kernels).
 
 =head1 ABOUT RCU
@@ -85,7 +85,7 @@ be some systems that have issues when dynamically loading libraries that use
 thread-specific data (I believe Windows Vista was among them). Consult with
 your working environment's manual to verify that if you notice any problem.
 
-Finally, it should be mentioned that XRCU requires no initializatio or cleanup
+Finally, it should be mentioned that XRCU requires no initialization or cleanup
 at a library level to function properly. Once the library is installed, you
 can freely use its API without any further action needed.
 
@@ -113,8 +113,8 @@ Naturally, RCU critical sections don't prevent I<all> memory reclamation,
 they only affect the destruction of objects that are derived from a type
 defined in XRCU, called C<finalizable>. If you wish to use the RCU API, all
 you need to do is make your types derive from C<finalizable> and use its API,
-and you'll be set. Any other memory management function, like C<malloc> and
-friends is unaffected by RCU as implemented in this library.
+and you'll be set. Any other memory management functions, like C<malloc> and
+friends are unaffected by RCU as implemented in this library.
 
 Critical sections are managed through the following API:
 
@@ -387,15 +387,15 @@ after all.
   #include <xrcu/stack.hpp>
 
 Stacks are the simplest of the lock-free data structures: They represent a
-basic LIFO stack on which you can push and pop items, one at a time. Although
-their functionality is a bit more limited than other structures, they are still
-very useful to implement things like atomic free lists.
+basic LIFO container on which you can push and pop items at the back of the
+stack. Although their functionality is a bit more limited than other structures,
+they are still very useful to implement things like atomic free lists.
 
 In XRCU, stacks meet the requirements for the C++ concept of I<Container>.
 
 =head3 Stack API
 
-Stacks are templated types, that can be instantiated with a type T:
+Stacks are templated types that can be instantiated with a type T:
 
   template <class T>
   struct stack
@@ -803,8 +803,8 @@ taken at compile time via type traits.
 In addition to the vector, the queue is composed of three additional counters:
 the capacity, a read cursor and a write cursor. The capacity is static, and
 simply stores the raw number of elements that the queue can hold before it's
-forced to reallocate. The read and write cursors and indices that indicate
-at which positions the C<pop> and C<push> or C<emplace> operations may take
+forced to reallocate. The read and write cursors are indices that indicate
+at which positions the C<pop> and C<push> (or C<emplace>) operations may take
 place.
 
 When an element is pushed into a queue, the write cursor is checked against
@@ -857,8 +857,8 @@ comparator type, which defaults to C<std::less>. Under most circumstances,
 that is usually enough, but users may instantiate with any other type that
 defines the C<operator()> which returns a boolean.
 
-As shown above, skip list has iterators, but they are non-const in all cases,
-for practicality reasons. Much like with stacks, skip list iterators are
+As shown above, skip_list has iterators, but they are always constant, for
+practicality reasons. Much like with other containers, skip list iterators are
 I<forward> iterators, and an implicit C<cs_guard>.
 
 The following describes the public interface for C<skip_list<T, CmpE<gt>>
@@ -1122,7 +1122,7 @@ be any updates made. The function can also return a freshly made object, and
 C<update> will work the same. The function may be called more than once if the
 atomic updates fail.
 
-Returns true if C<key> was present in the hash table before the call.
+Returns true if C<key> was not present in the hash table before the call.
 
 =item bool erase (const Key& key);
 

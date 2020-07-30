@@ -2,7 +2,7 @@
 
    This file is part of xrcu.
 
-   khipu is free software: you can redistribute it and/or modify
+   xrcu is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
@@ -25,9 +25,9 @@
  * achievable with the C++ standard atomic API. Basically, instead of using
  * a template class, we use raw pointers.
  *
- * This interface is needed because for some inexplicable reason, it is not
- * possible to get a pointer to the underlying integer in the std::atomic
- * interface (it may not even exist as such).
+ * This interface is needed because it is not generally possible to get
+ * a pointer to the underlying integer in the std::atomic API (it may not
+ * even exist as such).
  *
  * While we are at it, we also define a few additional operations that are
  * not present in the standard (double CAS, atomic spin).
@@ -36,13 +36,13 @@
  * ops to work on pointer-sized values, so we don't bother with anything else.
  */
 
-namespace xrcu
-{
-
 #if (defined (__GNUC__) && (__GNUC__ > 4 ||   \
     (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))) || (defined (__clang__) &&   \
     defined (__clang_major__) && (__clang_major__ >= 4 ||   \
       (__clang_major__ == 3 && __clang_minor__ >= 8)))
+
+namespace xrcu
+{
 
 inline uintptr_t
 xatomic_cas (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
@@ -83,6 +83,9 @@ xatomic_add (uintptr_t *ptr, intptr_t val)
 static_assert (sizeof (uintptr_t) == sizeof (std::atomic_uintptr_t) &&
   alignof (uintptr_t) == alignof (std::atomic_uintptr_t),
   "unsupported compiler (uintptr_t and atomic_uintptr_t mismatch)");
+
+namespace xrcu
+{
 
 #define AS_ATOMIC(x)   ((std::atomic_uintptr_t *)(x))
 
@@ -165,8 +168,6 @@ xatomic_spin_nop ()
 #  endif
 
 #else
-
-#include <atomic>
 
 inline void
 xatomic_spin_nop ()
