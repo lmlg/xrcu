@@ -314,7 +314,7 @@ Move constructor. Initializes the optional by taking ownership of C<value>.
 =item optional (optional<T>&& other);
 
 Move constructor. If C<other> has a value, then the optional is initialized
-by taken ownership of it. Otherwise, the optional will have no value.
+by taking ownership of it. Otherwise, the optional will have no value.
 
 =item T& operator* ();
 
@@ -595,9 +595,9 @@ the ABA problem.
 
 The only noteworthy thing to point out is that the C<swap> method is safe to
 call from multiple threads as well. In order to achive this, the library uses
-a special I<sentinel> bit, that is temporarily set as the head node when a
+a special I<sentinel> bit that is temporarily set at the head node when a
 swap is undergoing. During a swap, C<push> and C<pop> cannot proceed, since
-they check against that the special bit is not set before modifying the stack.
+they check that this special bit is not set before modifying the stack.
 
 Note that because stack iterators are implicit critical sections, and because
 of stacks' implementation, iterating a stack will always be safe, even in the
@@ -1118,9 +1118,9 @@ instead (as if by calling C<Val ()>).
 Note that the function takes a I<reference> to the value, and so it's possible
 to modify it in place. Additionally, if the function returns the very same
 object that was passed (i.e: the same reference that it received), there won't
-be any updates made. The function can also return a freshly made object, and
-C<update> will work the same. The function may be called more than once if the
-atomic updates fail.
+be any modifications made to the value in the table. If, however, the function
+returns a different object, this call will need to atomically update the value.
+The passed function may be called more than once if the atomic updates fail.
 
 Returns true if C<key> was not present in the hash table before the call.
 

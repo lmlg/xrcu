@@ -90,7 +90,8 @@ ctz (unsigned int val)
 
 #else
 
-unsigned int ctz (unsigned int val)
+inline unsigned int
+ctz (unsigned int val)
 {
   unsigned int ret = 0;
 
