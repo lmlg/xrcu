@@ -21,6 +21,7 @@
 #include "xrcu.hpp"
 #include "xatomic.hpp"
 #include "optional.hpp"
+#include "utils.hpp"
 #include <cstddef>
 #include <atomic>
 #include <functional>
@@ -40,14 +41,36 @@ namespace detail
 void* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp);
 void sl_dealloc_node (void *base);
 
-template <class T>
-struct sl_node : public finalizable
+struct sl_node_base : public finalizable
 {
   unsigned int nlvl;
   uintptr_t *next;
-  optional<T> key;
 
-  sl_node (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np)
+  sl_node_base (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np)
+    {
+    }
+
+  void safe_destroy ()
+    {
+      sl_dealloc_node (this);
+    }
+};
+
+template <class T>
+struct sl_node : public sl_node_base
+{
+  unsigned int nlvl;
+  uintptr_t *next;
+  T key;
+
+  sl_node (unsigned int lvl, uintptr_t *np, const T& kv) :
+      sl_node_base (lvl, np), key (kv)
+    {
+    }
+
+  template <class ...Args>
+  sl_node (unsigned int lvl, uintptr_t *np, Args... args) :
+      sl_node_base (lvl, np), key (std::forward<Args&&>(args)...)
     {
     }
 
@@ -56,12 +79,9 @@ struct sl_node : public finalizable
       uintptr_t *np;
       auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
 
-      new (self) sl_node<T> (lvl, np);
-
       try
         {
-          self->key = k;
-          return (self);
+          return (new (self) sl_node<T> (lvl, np, k));
         }
       catch (...)
         {
@@ -75,15 +95,12 @@ struct sl_node : public finalizable
     {
       uintptr_t *np;
       auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
-
-      new (self) sl_node<T> (lvl, np);
-      new (&self->key) optional<T> (std::forward<Args&&>(args)...);
-      return (self);
+      return (new (self) sl_node<T> (lvl, np, std::forward<Args&&>(args)...));
     }
 
   void safe_destroy ()
     {
-      this->key.reset ();
+      destroy<T> (&this->key);
       sl_dealloc_node (this);
     }
 };
@@ -108,7 +125,7 @@ init_preds_succs (uintptr_t *p1, uintptr_t *p2)
 template <class T, class Cmp = std::less<T> >
 struct skip_list
 {
-  std::atomic<detail::sl_node<T> *> head;
+  std::atomic<detail::sl_node_base *> head;
   Cmp cmpfn;
   unsigned int max_depth;
   std::atomic<size_t> hi_water { 1 };
@@ -123,18 +140,16 @@ struct skip_list
   typedef const T& const_reference;
   typedef T* pointer;
   typedef const T* const_pointer;
-
-  typedef detail::sl_node<T> node_type;
   typedef skip_list<T, Cmp> _Self;
 
-  node_type* _Make_root ()
+  detail::sl_node_base* _Make_root ()
     {
       uintptr_t *np;
-      auto ret = (node_type *)
+      auto ret = (detail::sl_node_base *)
         detail::sl_alloc_node (this->max_depth + 1,
-                               sizeof (node_type), &np);
+                               sizeof (detail::sl_node_base), &np);
 
-      new (ret) node_type (this->max_depth, np + 1);
+      new (ret) detail::sl_node_base (this->max_depth, np + 1);
       return (ret);
     }
 
@@ -148,9 +163,9 @@ struct skip_list
       return (this->hi_water.load (std::memory_order_relaxed));
     }
 
-  static node_type* _Node (uintptr_t addr)
+  static detail::sl_node_base* _Node (uintptr_t addr)
     {
-      return ((node_type *)(addr & ~detail::SL_XBIT));
+      return ((detail::sl_node_base *)(addr & ~detail::SL_XBIT));
     }
 
   static uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl)
@@ -321,7 +336,7 @@ struct skip_list
 
   static const T& _Getk (uintptr_t addr)
     {
-      return (*_Self::_Node(addr)->key);
+      return (((detail::sl_node<T> *)_Self::_Node(addr))->key);
     }
 
   uintptr_t _Find_preds (int n, const T& key, int unlink,
@@ -445,7 +460,7 @@ struct skip_list
           preds, succs, &xroot) != 0)
         return (false);
 
-      uintptr_t nv = (uintptr_t)node_type::copy (n, key);
+      uintptr_t nv = (uintptr_t)detail::sl_node<T>::copy (n, key);
 
       for (size_t lvl = 0; lvl < n; ++lvl)
         _Self::_Node_at(nv, lvl) = succs[lvl];
@@ -502,7 +517,7 @@ struct skip_list
       if (it == 0)
         return (it);
 
-      node_type *nodep = _Self::_Node (it);
+      detail::sl_node_base *nodep = _Self::_Node (it);
       uintptr_t qx = 0, next = 0;
 
       for (int lvl = nodep->nlvl - 1; lvl >= 0; --lvl)
@@ -592,7 +607,7 @@ struct skip_list
     }
 
   template <bool Destroy = false>
-  void _Fini_root (node_type *xroot)
+  void _Fini_root (detail::sl_node_base *xroot)
     {
       for (uintptr_t run = (uintptr_t)xroot; run != 0; )
         {
