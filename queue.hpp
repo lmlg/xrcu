@@ -109,9 +109,9 @@ struct alignas (uintptr_t) q_data : public finalizable
             return (dfl);
 
           uintptr_t rv = this->ptrs[curr];
-          if ((rv & xbit) != 0 || rv == dfl)
+          if (rv & xbit)
             return (xbit);
-          else if (xatomic_cas_bool (&this->ptrs[curr], rv, dfl))
+          else if (rv != dfl && xatomic_cas_bool (&this->ptrs[curr], rv, dfl))
             {
               this->rd_idx.fetch_add (1, std::memory_order_relaxed);
               return (rv);
