@@ -38,8 +38,18 @@ namespace xrcu
 namespace detail
 {
 
-void* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp);
+struct sl_node_base;
+
 void sl_dealloc_node (void *base);
+sl_node_base* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp);
+
+static const uintptr_t SL_XBIT = 1;
+static const unsigned int SL_MAX_DEPTH = 24;
+
+static const int SL_UNLINK_SKIP = -1;
+static const int SL_UNLINK_NONE = 0;
+static const int SL_UNLINK_ASSIST = 1;
+static const int SL_UNLINK_FORCE = 2;
 
 struct sl_node_base : public finalizable
 {
@@ -48,6 +58,59 @@ struct sl_node_base : public finalizable
 
   sl_node_base (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np)
     {
+    }
+
+  static sl_node_base* get (uintptr_t addr)
+    {
+      return ((sl_node_base *)(addr & ~SL_XBIT));
+    }
+
+  static uintptr_t& at (uintptr_t addr, unsigned int lvl)
+    {
+      return (sl_node_base::get(addr)->next[lvl]);
+    }
+
+  static unsigned int level (uintptr_t addr)
+    {
+      return (sl_node_base::get(addr)->nlvl);
+    }
+
+  static uintptr_t* plen (uintptr_t addr)
+    {
+      return (sl_node_base::get(addr)->next - 1);
+    }
+
+  static void bump (uintptr_t *lenp, intptr_t off)
+    {
+      xatomic_add (lenp, off + off);
+    }
+
+  static sl_node_base* make_root (unsigned int depth)
+    {
+      uintptr_t *np;
+      auto ret = sl_alloc_node (depth + 1, sizeof (sl_node_base), &np);
+      return (new (ret) sl_node_base (depth, np + 1));
+    }
+
+  static unsigned int
+  rand_lvl (std::atomic<size_t>& hw)
+    {
+      size_t lvl = ctz (xrand ()) * 2 / 3;
+
+      if (lvl == 0)
+        return (1);
+      while (true)
+        {
+          auto prev = hw.load (std::memory_order_relaxed);
+          if (lvl <= prev)
+            return (lvl);
+          else if (prev == SL_MAX_DEPTH ||
+              hw.compare_exchange_weak (prev, prev + 1,
+                std::memory_order_acq_rel, std::memory_order_relaxed))
+            return (prev);
+
+          xatomic_spin_nop ();
+        }
     }
 
   void safe_destroy ()
@@ -105,14 +168,6 @@ struct sl_node : public sl_node_base
     }
 };
 
-static const uintptr_t SL_XBIT = 1;
-static const unsigned int SL_MAX_DEPTH = 24;
-
-static const int SL_UNLINK_SKIP = -1;
-static const int SL_UNLINK_NONE = 0;
-static const int SL_UNLINK_ASSIST = 1;
-static const int SL_UNLINK_FORCE = 2;
-
 inline void
 init_preds_succs (uintptr_t *p1, uintptr_t *p2)
 {
@@ -141,17 +196,7 @@ struct skip_list
   typedef T* pointer;
   typedef const T* const_pointer;
   typedef skip_list<T, Cmp> _Self;
-
-  detail::sl_node_base* _Make_root ()
-    {
-      uintptr_t *np;
-      auto ret = (detail::sl_node_base *)
-        detail::sl_alloc_node (this->max_depth + 1,
-                               sizeof (detail::sl_node_base), &np);
-
-      new (ret) detail::sl_node_base (this->max_depth, np + 1);
-      return (ret);
-    }
+  typedef detail::sl_node<T> _Node;
 
   uintptr_t _Head () const
     {
@@ -163,38 +208,14 @@ struct skip_list
       return (this->hi_water.load (std::memory_order_relaxed));
     }
 
-  static detail::sl_node_base* _Node (uintptr_t addr)
-    {
-      return ((detail::sl_node_base *)(addr & ~detail::SL_XBIT));
-    }
-
-  static uintptr_t& _Node_at (uintptr_t addr, unsigned int lvl)
-    {
-      return (_Self::_Node(addr)->next[lvl]);
-    }
-
-  static unsigned int _Node_lvl (uintptr_t addr)
-    {
-      return (_Self::_Node(addr)->nlvl);
-    }
-
-  static uintptr_t* _Root_plen (uintptr_t addr)
-    {
-      return (_Self::_Node(addr)->next - 1);
-    }
-
-  void _Bump_len (uintptr_t *lenp, intptr_t off)
-    {
-      xatomic_add (lenp, off + off);
-    }
-
   void _Init (Cmp c, unsigned int depth)
     {
       this->cmpfn = c;
       if ((this->max_depth = depth) > detail::SL_MAX_DEPTH)
         this->max_depth = detail::SL_MAX_DEPTH;
 
-      this->head.store (this->_Make_root (), std::memory_order_relaxed);
+      this->head.store (_Node::make_root (this->max_depth + 1),
+                        std::memory_order_relaxed);
     }
 
   skip_list (Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH)
@@ -263,7 +284,7 @@ struct skip_list
               if (this->node == 0)
                 break;
 
-              this->node = skip_list<T, Cmp>::_Node_at (this->node, 0);
+              this->node = detail::sl_node_base::at (this->node, 0);
               if ((this->node & detail::SL_XBIT) == 0)
                 break;
             }
@@ -314,29 +335,9 @@ struct skip_list
 
   typedef iterator const_iterator;
 
-  unsigned int _Rand_lvl ()
-    {
-      size_t lvl = ctz (xrand ()) * 2 / 3;
-
-      if (lvl == 0)
-        return (1);
-      while (true)
-        {
-          auto prev = this->_Hiwater ();
-          if (lvl <= prev)
-            return (lvl);
-          else if (prev == detail::SL_MAX_DEPTH ||
-              this->hi_water.compare_exchange_weak (prev, prev + 1,
-                std::memory_order_acq_rel, std::memory_order_relaxed))
-            return (prev);
-
-          xatomic_spin_nop ();
-        }
-    }
-
   static const T& _Getk (uintptr_t addr)
     {
-      return (((detail::sl_node<T> *)_Self::_Node(addr))->key);
+      return (((_Node *)_Node::get(addr))->key);
     }
 
   uintptr_t _Find_preds (int n, const T& key, int unlink,
@@ -351,7 +352,7 @@ struct skip_list
 
       for (int lvl = (int)this->_Hiwater () - 1; lvl >= 0; --lvl)
         {
-          uintptr_t next = _Self::_Node_at (pr, lvl);
+          uintptr_t next = _Node::at (pr, lvl);
           if (next == 0 && lvl >= n)
             continue;
           else if (next & detail::SL_XBIT)
@@ -359,7 +360,7 @@ struct skip_list
 
           for (it = next; it != 0; )
             {
-              next = _Self::_Node_at (it, lvl);
+              next = _Node::at (it, lvl);
               while (next & detail::SL_XBIT)
                 {
                   if (unlink == detail::SL_UNLINK_SKIP ||
@@ -368,11 +369,11 @@ struct skip_list
                       if ((it = next & ~detail::SL_XBIT) == 0)
                         break;
 
-                      next = _Self::_Node_at (it, lvl);
+                      next = _Node::at (it, lvl);
                     }
                   else
                     {
-                      uintptr_t qx = xatomic_cas (&_Self::_Node_at(pr, lvl),
+                      uintptr_t qx = xatomic_cas (&_Node::at(pr, lvl),
                                                   it, next & ~detail::SL_XBIT);
                       if (qx == it)
                         it = next & ~detail::SL_XBIT;
@@ -385,7 +386,7 @@ struct skip_list
                           it = qx;
                         }
 
-                      next = it ? _Self::_Node_at (it, lvl) : 0;
+                      next = it ? _Node::at (it, lvl) : 0;
                     }
                 }
 
@@ -455,20 +456,20 @@ struct skip_list
 
       detail::init_preds_succs (preds, succs);
 
-      size_t n = this->_Rand_lvl ();
+      size_t n = _Node::rand_lvl (this->hi_water);
       if (this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST,
           preds, succs, &xroot) != 0)
         return (false);
 
-      uintptr_t nv = (uintptr_t)detail::sl_node<T>::copy (n, key);
+      uintptr_t nv = (uintptr_t)_Node::copy (n, key);
 
       for (size_t lvl = 0; lvl < n; ++lvl)
-        _Self::_Node_at(nv, lvl) = succs[lvl];
+        _Node::at(nv, lvl) = succs[lvl];
 
       uintptr_t pred = *preds;
-      if (!xatomic_cas_bool (&_Self::_Node_at(pred, 0), *succs, nv))
+      if (!xatomic_cas_bool (&_Node::at(pred, 0), *succs, nv))
         {
-          _Self::_Node(nv)->safe_destroy ();
+          _Node::get(nv)->safe_destroy ();
           return (this->_Insert (key));
         }
 
@@ -476,15 +477,14 @@ struct skip_list
         while (true)
           {
             pred = preds[lvl];
-            if (xatomic_cas_bool (&_Self::_Node_at(pred, lvl),
-                                  succs[lvl], nv))
+            if (xatomic_cas_bool (&_Node::at(pred, lvl), succs[lvl], nv))
               break;   // Successful link.
 
             this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST, preds, succs);
             for (size_t ix = lvl; ix < n; ++ix)
-              if ((pred = _Self::_Node_at (nv, ix)) == succs[ix])
+              if ((pred = _Node::at (nv, ix)) == succs[ix])
                 continue;
-              else if (xatomic_cas (&_Self::_Node_at(nv, ix),
+              else if (xatomic_cas (&_Node::at(nv, ix),
                                     pred, succs[ix]) & detail::SL_XBIT)
                 { // Another thread is removing this very key - Bail out.
                   this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
@@ -492,13 +492,13 @@ struct skip_list
                 }
           }
 
-      if (_Self::_Node_at (nv, n - 1) & detail::SL_XBIT)
+      if (_Node::at (nv, n - 1) & detail::SL_XBIT)
         { // Another thread is removing this key - Make sure it's unlinked.
           this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
           return (false);
         }
 
-      this->_Bump_len (_Self::_Root_plen (xroot), 1);
+      _Node::bump (_Node::plen (xroot), 1);
       return (true);
     }
 
@@ -517,7 +517,7 @@ struct skip_list
       if (it == 0)
         return (it);
 
-      detail::sl_node_base *nodep = _Self::_Node (it);
+      detail::sl_node_base *nodep = _Node::get (it);
       uintptr_t qx = 0, next = 0;
 
       for (int lvl = nodep->nlvl - 1; lvl >= 0; --lvl)
@@ -541,7 +541,7 @@ struct skip_list
 
       // Unlink the item.
       this->_Find_preds (0, key, detail::SL_UNLINK_FORCE);
-      this->_Bump_len (_Self::_Root_plen (xroot), -1);
+      _Node::bump (_Node::plen (xroot), -1);
       finalize (nodep);
       return (it);
     }
@@ -561,7 +561,7 @@ struct skip_list
 
   const_iterator cbegin () const
     {
-      return (iterator (_Self::_Node_at (this->_Head (), 0)));
+      return (iterator (_Node::at (this->_Head (), 0)));
     }
 
   iterator begin ()
@@ -611,12 +611,12 @@ struct skip_list
     {
       for (uintptr_t run = (uintptr_t)xroot; run != 0; )
         {
-          uintptr_t next = _Self::_Node_at (run, 0);
+          uintptr_t next = _Node::at (run, 0);
 
           if (Destroy)
-            _Self::_Node(run)->safe_destroy ();
+            _Node::get(run)->safe_destroy ();
           else
-            finalize (_Self::_Node (run));
+            finalize (_Node::get (run));
 
           run = next;
         }
@@ -627,7 +627,7 @@ struct skip_list
       cs_guard g;
       while (true)
         {
-          auto ptr = _Self::_Root_plen ((uintptr_t)
+          auto ptr = _Node::plen ((uintptr_t)
             this->head.load (std::memory_order_relaxed));
           auto val = *ptr;
 
@@ -684,13 +684,13 @@ struct skip_list
       this->head.store (rh, std::memory_order_relaxed);
       right.head.store (lh, std::memory_order_relaxed);
 
-      xatomic_and (_Self::_Root_plen ((uintptr_t)rh), ~(uintptr_t)1);
-      xatomic_and (_Self::_Root_plen ((uintptr_t)lh), ~(uintptr_t)1);
+      xatomic_and (_Node::plen ((uintptr_t)rh), ~(uintptr_t)1);
+      xatomic_and (_Node::plen ((uintptr_t)lh), ~(uintptr_t)1);
     }
 
   void clear ()
     {
-      auto xroot = this->_Make_root ();
+      auto xroot = _Node::make_root (this->max_depth);
       auto prev = this->head.exchange (xroot, std::memory_order_release);
       this->_Fini_root<> (prev);
     }
