@@ -70,11 +70,6 @@ struct sl_node_base : public finalizable
       return (sl_node_base::get(addr)->next[lvl]);
     }
 
-  static unsigned int level (uintptr_t addr)
-    {
-      return (sl_node_base::get(addr)->nlvl);
-    }
-
   static uintptr_t* plen (uintptr_t addr)
     {
       return (sl_node_base::get(addr)->next - 1);
@@ -122,8 +117,6 @@ struct sl_node_base : public finalizable
 template <class T>
 struct sl_node : public sl_node_base
 {
-  unsigned int nlvl;
-  uintptr_t *next;
   T key;
 
   sl_node (unsigned int lvl, uintptr_t *np, const T& kv) :
