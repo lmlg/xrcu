@@ -7,7 +7,7 @@ include: stacks, queues (multiple producer, multiple consumer),
 skip lists and hash tables.
 
 ## Installation
-As with most GNU packages, libsref follows a very simple convention:
+As with most GNU packages, xrcu follows a very simple convention:
 ```shell
 ./configure
 make
