@@ -135,8 +135,8 @@ struct ht_iter : public cs_guard
       this->valid = false;
       for (; this->idx < this->vec->size (); )
         {
-          this->c_key = this->vec->data[idx + 0];
-          this->c_val = this->vec->data[idx + 1] & ~Vtraits::XBIT;
+          this->c_key = this->vec->data[this->idx + 0];
+          this->c_val = this->vec->data[this->idx + 1] & ~Vtraits::XBIT;
 
           this->idx += 2;
           if ((this->c_key & ~Ktraits::XBIT) != Ktraits::FREE &&
@@ -501,7 +501,7 @@ struct hash_table
                   xatomic_cas_bool (ep + idx + 1, val_traits::FREE, v))
 #endif
                 {
-                  this->vec->nelems.fetch_add (1, std::memory_order_acq_rel);
+                  vp->nelems.fetch_add (1, std::memory_order_acq_rel);
                   return (found);
                 }
 
@@ -604,7 +604,7 @@ struct hash_table
                                           oldv, val_traits::DELT))
                 continue;
 
-              this->vec->nelems.fetch_sub (1, std::memory_order_acq_rel);
+              vp->nelems.fetch_sub (1, std::memory_order_acq_rel);
               // Safe to set the key without atomic ops.
               ep[idx] = key_traits::DELT;
               key_traits::destroy (oldk);
