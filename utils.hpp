@@ -38,6 +38,27 @@ void destroy (void *ptr)
   ((T *)ptr)->~T ();
 }
 
+inline uint32_t upsize (uint32_t x)
+{
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  return (x + 1);
+}
+
+inline uint64_t upsize (uint64_t x)
+{
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  x |= x >> 32;
+  return (x + 1);
+}
+
 template <class T>
 struct alignas (8) type_wrapper : public finalizable
 {

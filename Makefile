@@ -12,9 +12,11 @@ STATIC_LIBS = libxrcu.$(STATIC_EXT)
 SHARED_LIBS = libxrcu.$(DYNAMIC_EXT)
 
 HEADERS = xrcu.hpp stack.hpp hash_table.hpp skip_list.hpp   \
-          xatomic.hpp lwlock.hpp optional.hpp queue.hpp
+          xatomic.hpp lwlock.hpp optional.hpp queue.hpp hash_set.hpp
 
-OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o utils.o
+OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o   \
+			 utils.o hash_set.o
+
 LOBJS = $(OBJS:.o=.lo)
 
 TEST_OBJS = $(LOBJS)

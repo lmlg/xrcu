@@ -791,8 +791,8 @@ struct hash_table
       if (this == &right)
         return;
 
-      detail::ht_sentry s1 (&this->lock, ~val_traits::XBIT);
-      detail::ht_sentry s2 (&right.lock, ~val_traits::XBIT);
+      detail::ht_sentry s1 (&this->lock, val_traits::XBIT);
+      detail::ht_sentry s2 (&right.lock, val_traits::XBIT);
 
       // Prevent further insertions (still allows deletions).
       this->grow_limit.store (0, std::memory_order_release);

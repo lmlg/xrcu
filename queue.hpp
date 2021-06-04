@@ -38,27 +38,6 @@ namespace xrcu
 namespace detail
 {
 
-static inline uint32_t upsize (uint32_t x)
-{
-  x |= x >> 1;
-  x |= x >> 2;
-  x |= x >> 4;
-  x |= x >> 8;
-  x |= x >> 16;
-  return (x + 1);
-}
-
-static inline uint64_t upsize (uint64_t x)
-{
-  x |= x >> 1;
-  x |= x >> 2;
-  x |= x >> 4;
-  x |= x >> 8;
-  x |= x >> 16;
-  x |= x >> 32;
-  return (x + 1);
-}
-
 struct alignas (uintptr_t) q_data : public finalizable
 {
   uintptr_t *ptrs;
