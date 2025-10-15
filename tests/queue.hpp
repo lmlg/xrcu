@@ -8,7 +8,7 @@
 namespace q_test
 {
 
-typedef xrcu::queue<std::string> queue_t;
+typedef xrcu::queue<std::string, test_allocator<std::string>> queue_t;
 
 void test_single_threaded ()
 {

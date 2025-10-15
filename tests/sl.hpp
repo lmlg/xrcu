@@ -2,12 +2,13 @@
 #define __XRCU_TESTS_SL__   1
 
 #include "xrcu/skip_list.hpp"
-#include <thread>
 #include <cstdio>
 #include <cctype>
+#include <thread>
 #include "utils.hpp"
 
-typedef xrcu::skip_list<std::string> sklist_t;
+typedef xrcu::skip_list<std::string, std::less<std::string>,
+                        test_allocator<std::string>> sklist_t;
 
 namespace sl_test
 {

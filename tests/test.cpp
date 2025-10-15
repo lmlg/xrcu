@@ -21,6 +21,8 @@
 #include "stack.hpp"
 #include "queue.hpp"
 
+std::atomic<size_t> alloc_size;
+
 int main ()
 {
   run_tests ();

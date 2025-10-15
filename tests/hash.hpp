@@ -7,7 +7,8 @@
 #include <algorithm>
 #include <cstdio>
 
-typedef xrcu::hash_table<int, std::string> table_t;
+typedef xrcu::hash_table<int, std::string, std::equal_to<int>,
+                         std::hash<int>, test_allocator<int>> table_t;
 
 namespace ht_test
 {

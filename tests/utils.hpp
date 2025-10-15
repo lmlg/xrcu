@@ -18,13 +18,14 @@
 #ifndef __XRCU_TESTS_UTILS__
 #define __XRCU_TESTS_UTILS__   1
 
-#include <iostream>
-#include <vector>
-#include <string>
-#include <utility>
-#include <initializer_list>
+#include <atomic>
 #include <cstdlib>
 #include <cstdio>
+#include <initializer_list>
+#include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #define ASSERT(Cond)   \
   do   \
@@ -37,6 +38,45 @@
         }   \
     }   \
   while (0)
+
+extern std::atomic<size_t> alloc_size;
+
+template <typename T>
+struct test_allocator
+{
+  typedef std::true_type is_always_equal;
+  typedef T value_type;
+  typedef T* pointer;
+  typedef const T* const_pointer;
+  typedef T& reference;
+  typedef const T& const_reference;
+  typedef size_t size_type;
+  typedef ptrdiff_t difference_type;
+
+  test_allocator ()
+    {
+    }
+
+  T* allocate (size_t n, const void * = nullptr)
+    {
+      T *ret = (T *)malloc (n * sizeof (T));
+      if (! ret)
+        throw std::bad_alloc ();
+
+      alloc_size.fetch_add (n * sizeof (T));
+      return (ret);
+    }
+
+  void deallocate (T *ptr, size_t n)
+    {
+      free (ptr);
+      alloc_size.fetch_sub (n * sizeof (T));
+    }
+
+  ~test_allocator ()
+    {
+    }
+};
 
 struct test_fn
 {
@@ -76,9 +116,14 @@ struct test_module
   test_module (const char *name, std::initializer_list<pair_type> tests)
     {
       std::string nm = std::string (" (") + name + ") ";
+      alloc_size.store (0, std::memory_order_release);
 
       for (auto pair : tests)
         test_suite().push_back (test_fn (pair.first + nm, pair.second));
+
+      size_t bytes = alloc_size.load (std::memory_order_acquire);
+      if (bytes)
+        std::cout << "Warning: " << bytes << " bytes were not freed\n";
     }
 };
 

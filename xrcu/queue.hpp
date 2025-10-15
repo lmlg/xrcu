@@ -663,7 +663,7 @@ struct queue
         }
     }
 
-  void swap (queue<T>& right)
+  void swap (queue<T, Alloc>& right)
     {
       if (this == &right)
         return;

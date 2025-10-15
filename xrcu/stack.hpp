@@ -464,7 +464,7 @@ struct stack
       return (this->_Root () == nullptr);
     }
 
-  void swap (stack<T>& right)
+  void swap (stack<T, Alloc>& right)
     {
       cs_guard g;
 
@@ -490,7 +490,7 @@ struct stack
       return (*this);
     }
 
-  bool operator== (const stack<T>& right) const
+  bool operator== (const stack<T, Alloc>& right) const
     {
       auto x1 = this->cbegin (), x2 = this->cend ();
       auto y1 = right.cbegin (), y2 = right.cend ();
@@ -502,12 +502,12 @@ struct stack
       return (x1 == x2 && y1 == y2);
     }
 
-  bool operator!= (const stack<T>& right) const
+  bool operator!= (const stack<T, Alloc>& right) const
     {
       return (!(*this == right));
     }
 
-  bool operator< (const stack<T>& right) const
+  bool operator< (const stack<T, Alloc>& right) const
     {
       auto x1 = this->cbegin (), x2 = this->cend ();
       auto y1 = right.cbegin (), y2 = right.cend ();
@@ -523,17 +523,17 @@ struct stack
       return (y1 != y2);
     }
 
-  bool operator> (const stack<T>& right) const
+  bool operator> (const stack<T, Alloc>& right) const
     {
       return (right < *this);
     }
 
-  bool operator<= (const stack<T>& right) const
+  bool operator<= (const stack<T, Alloc>& right) const
     {
       return (!(right < *this));
     }
 
-  bool operator>= (const stack<T>& right) const
+  bool operator>= (const stack<T, Alloc>& right) const
     {
       return (!(*this < right));
     }
