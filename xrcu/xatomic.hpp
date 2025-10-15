@@ -48,7 +48,7 @@ inline uintptr_t
 xatomic_cas (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 {
   __atomic_compare_exchange_n (ptr, &exp, nval, 0,
-    __ATOMIC_ACQ_REL, __ATOMIC_RELAXED);
+                               __ATOMIC_ACQ_REL, __ATOMIC_RELAXED);
   return (exp);
 }
 
@@ -58,10 +58,10 @@ xatomic_or (uintptr_t *ptr, uintptr_t val)
   return (__atomic_fetch_or (ptr, val, __ATOMIC_ACQ_REL));
 }
 
-inline void
+inline uintptr_t
 xatomic_and (uintptr_t *ptr, uintptr_t val)
 {
-  (void)__atomic_and_fetch (ptr, val, __ATOMIC_ACQ_REL);
+  return (__atomic_fetch_and (ptr, val, __ATOMIC_ACQ_REL));
 }
 
 inline uintptr_t
@@ -81,8 +81,8 @@ xatomic_add (uintptr_t *ptr, intptr_t val)
 #include <atomic>
 
 static_assert (sizeof (uintptr_t) == sizeof (std::atomic_uintptr_t) &&
-  alignof (uintptr_t) == alignof (std::atomic_uintptr_t),
-  "unsupported compiler (uintptr_t and atomic_uintptr_t mismatch)");
+               alignof (uintptr_t) == alignof (std::atomic_uintptr_t),
+               "uintptr_t and atomic_uintptr_t must match in size");
 
 namespace xrcu
 {
@@ -92,8 +92,8 @@ namespace xrcu
 inline uintptr_t
 xatomic_cas (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 {
-  AS_ATOMIC(ptr)->compare_exchange_weak (exp, nval,
-    std::memory_order_acq_rel, std::memory_order_relaxed);
+  AS_ATOMIC(ptr)->compare_exchange_weak (exp, nval, std::memory_order_acq_rel,
+                                         std::memory_order_relaxed);
   return (exp);
 }
 
@@ -124,14 +124,14 @@ xatomic_or (uintptr_t *ptr, uintptr_t val)
     }
 }
 
-inline void
+inline uintptr_t
 xatomic_and (uintptr_t *ptr, uintptr_t val)
 {
   while (true)
     {
       uintptr_t ret = *ptr;
       if (xatomic_cas (ptr, ret, ret & val) == ret)
-        return;
+        return (ret);
 
       xatomic_spin_nop ();
     }
@@ -195,24 +195,24 @@ xatomic_cas_bool (uintptr_t *ptr, uintptr_t exp, uintptr_t nval)
 #    if defined (_ILP32) || defined (__ILP32__)
 
 inline bool
-xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
-  uintptr_t ehi, uintptr_t nlo, uintptr_t nhi)
+xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo, uintptr_t ehi,
+                   uintptr_t nlo, uintptr_t nhi)
 {
   uint64_t exp = ((uint64_t)ehi << 32) | elo;
   uint64_t nval = ((uint64_t)nhi << 32) | nlo;
-  return (__atomic_compare_exchange_n ((uint64_t *)ptr,
-    &exp, nval, 0, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED));
+  return (__atomic_compare_exchange_n ((uint64_t *)ptr, &exp, nval, 0,
+                                       __ATOMIC_ACQ_REL, __ATOMIC_RELAXED));
 }
 
 #    else
 
 inline bool
-xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
-  uintptr_t ehi, uintptr_t nlo, uintptr_t nhi)
+xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo, uintptr_t ehi,
+                   uintptr_t nlo, uintptr_t nhi)
 {
   char r;
 
-  __asm__ __volatile__
+  asm volatile
     (
       "lock; cmpxchg16b %0\n\t"
       "setz %1"
@@ -234,13 +234,13 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
 #    if defined (__PIC__) && __GNUC__ < 5
 
 inline bool
-xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
-  uintptr_t ehi, uintptr_t nlo, uintptr_t nhi)
+xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo, uintptr_t ehi,
+                   uintptr_t nlo, uintptr_t nhi)
 {
   uintptr_t s;
   char r;
 
-  __asm__ __volatile__
+  asm volatile
     (
       "movl %%ebx, %2\n\t"
       "leal %0, %%edi\n\t"
@@ -260,11 +260,11 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
 #    else
 
 inline bool
-xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
-  uintptr_t ehi, uintptr_t nlo, uintptr_t nhi)
+xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo, uintptr_t ehi,
+                   uintptr_t nlo, uintptr_t nhi)
 {
   char r;
-  __asm__ __volatile__
+  asm volatile
     (
       "lock; cmpxchg8b %0\n\t"
       "setz %1"
@@ -288,8 +288,8 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
 #    define XRCU_HAVE_XATOMIC_DCAS
 
 inline bool
-xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
-  uintptr_t ehi, uintptr_t nlo, uintptr_t nhi)
+xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo, uintptr_t ehi,
+                   uintptr_t nlo, uintptr_t nhi)
 {
   uint64_t qv = ((uint64_t)ehi << 32) | elo;
   uint64_t nv = ((uint64_t)nhi << 32) | nlo;
@@ -297,7 +297,7 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
   while (true)
     {
       uint64_t tmp;
-      __asm__ __volatile__
+      asm volatile
         (
           "ldrexd %0, %H0, [%1]"
           : "=&r" (tmp) : "r" (ptr)
@@ -307,7 +307,7 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
         return (false);
 
       int r;
-      __asm__ __volatile__
+      asm volatile
         (
           "strexd %0, %3, %H3, [%2]"
           : "=&r" (r), "+m" (*ptr)
@@ -325,13 +325,13 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
 #    define XRCU_HAVE_XATOMIC_DCAS
 
 inline bool
-xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
-  uintptr_t ehi, uintptr_t nlo, uintptr_t nhi)
+xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo, uintptr_t ehi,
+                   uintptr_t nlo, uintptr_t nhi)
 {
   while (true)
     {
       uintptr_t t1, t2;
-      __asm__ __volatile__
+      asm volatile
         (
           "ldaxp %0, %1, %2"
           : "=&r" (t1), "=&r" (t2)
@@ -342,7 +342,7 @@ xatomic_dcas_bool (uintptr_t *ptr, uintptr_t elo,
         return (false);
 
       int r;
-      __asm__ __volatile__
+      asm volatile
         (
           "stxp %w0, %2, %3, %1"
           : "=&r" (r), "=Q" (*ptr)

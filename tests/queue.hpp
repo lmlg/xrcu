@@ -15,6 +15,7 @@ void test_single_threaded ()
   {
     queue_t q;
     ASSERT (q.empty ());
+    ASSERT (!q.front().has_value ());
     ASSERT (!q.back().has_value ());
   }
 

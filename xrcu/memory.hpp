@@ -1,4 +1,4 @@
-/* Definitions for the skip list template type.
+/* Declarations for memory-related interfaces.
 
    This file is part of xrcu.
 
@@ -15,29 +15,35 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#include "skip_list.hpp"
-#include <cstring>
-#include <new>
+#ifndef __XRCU_MEMORY_HPP__
+#define __XRCU_MEMORY_HPP__   1
+
+#include <cstddef>
+#include <cstdint>
 
 namespace xrcu
 {
 
-namespace detail
+template <typename Alloc>
+uintptr_t* alloc_uptrs (size_t tsize, size_t nr_uptrs,
+                        size_t *upp = nullptr)
 {
+  size_t total = tsize + nr_uptrs * sizeof (uintptr_t);
+  size_t uptrs = (total / sizeof (uintptr_t)) +
+                 ((total % sizeof (uintptr_t)) != 0);
+  if (upp)
+    *upp = uptrs;
 
-sl_node_base* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp)
-{
-  void *p = ::operator new (size + lvl * sizeof (uintptr_t));
-  *outpp = (uintptr_t *)((char *)p + size);
-  memset (*outpp, 0, lvl * sizeof (uintptr_t));
-  return ((sl_node_base *)p);
+  return (Alloc().allocate (uptrs));
 }
 
-void sl_dealloc_node (void *ptr)
+template <typename Alloc>
+void dealloc_uptrs (void *base, void *end)
 {
-  ::operator delete (ptr);
+  size_t total = (char *)end - (char *)base;
+  Alloc().deallocate ((uintptr_t *)base, total / sizeof (uintptr_t));
 }
-
-} // namespace detail
 
 } // namespace xrcu
+
+#endif

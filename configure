@@ -176,7 +176,7 @@ tryflag CXXFLAGS_TRY -Werror=ignored-optimization-argument
 tryflag CXXFLAGS_EXTRA -Wa,--noexecstack
 
 # See if the compiler accepts explicit standard versioning
-tryflag CXXFLAGS -std=c++11
+tryflag CXXFLAGS -std=c++17
 
 # Enable optimizations
 tryflag CXXFLAGS -O2
