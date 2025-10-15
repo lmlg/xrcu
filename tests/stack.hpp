@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_STACK__
 #define __XRCU_TESTS_STACK__   1
 
-#include "../stack.hpp"
+#include "xrcu/stack.hpp"
 #include "utils.hpp"
 #include <thread>
 

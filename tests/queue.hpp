@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_QUEUE__
 #define __XRCU_TESTS_QUEUE__   1
 
-#include "../queue.hpp"
+#include "xrcu/queue.hpp"
 #include "utils.hpp"
 #include <thread>
 

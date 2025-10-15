@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_SL__
 #define __XRCU_TESTS_SL__   1
 
-#include "../skip_list.hpp"
+#include "xrcu/skip_list.hpp"
 #include <thread>
 #include <cstdio>
 #include <cctype>

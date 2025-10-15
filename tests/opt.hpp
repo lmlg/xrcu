@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_OPT__
 #define __XRCU_TESTS_OPT__   1
 
-#include "../optional.hpp"
+#include "xrcu/optional.hpp"
 #include "utils.hpp"
 
 namespace opt_test

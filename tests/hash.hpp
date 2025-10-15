@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_HASH__
 #define __XRCU_TESTS_HASH__   1
 
-#include "../hash_table.hpp"
+#include "xrcu/hash_table.hpp"
 #include "utils.hpp"
 #include <thread>
 #include <algorithm>

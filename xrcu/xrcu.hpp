@@ -30,8 +30,10 @@ extern void exit_cs ();
 // Test if the calling thread is in a read-side critical section.
 extern bool in_cs ();
 
-/* Wait until all readers have entered a quiescent state.
- * Returns false if a deadlock is detected, true otherwise. */
+/*
+ * Wait until all readers have entered a quiescent state.
+ * Returns false if a deadlock is detected, true otherwise.
+ */
 extern bool sync ();
 
 // Base type for finalizable objects.
