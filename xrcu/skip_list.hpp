@@ -18,14 +18,17 @@
 #ifndef __SKIP_LIST_HPP__
 #define __SKIP_LIST_HPP__   1
 
+#include "memory.hpp"
 #include "xrcu.hpp"
 #include "xatomic.hpp"
-#include "optional.hpp"
 #include "utils.hpp"
-#include <cstddef>
 #include <atomic>
+#include <cstddef>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
+#include <memory>
+#include <optional>
 
 namespace std
 {
@@ -38,11 +41,6 @@ namespace xrcu
 namespace detail
 {
 
-struct sl_node_base;
-
-void sl_dealloc_node (void *base);
-sl_node_base* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp);
-
 static const uintptr_t SL_XBIT = 1;
 static const unsigned int SL_MAX_DEPTH = 24;
 
@@ -51,7 +49,8 @@ static const int SL_UNLINK_NONE = 0;
 static const int SL_UNLINK_ASSIST = 1;
 static const int SL_UNLINK_FORCE = 2;
 
-struct sl_node_base : public finalizable
+template <typename Alloc>
+struct alignas (uintptr_t) sl_node_base : public finalizable
 {
   unsigned int nlvl;
   uintptr_t *next;
@@ -82,9 +81,13 @@ struct sl_node_base : public finalizable
 
   static sl_node_base* make_root (unsigned int depth)
     {
-      uintptr_t *np;
-      auto ret = sl_alloc_node (depth + 1, sizeof (sl_node_base), &np);
-      return (new (ret) sl_node_base (depth, np + 1));
+      size_t uptrs;
+      uintptr_t *raw = alloc_uptrs<Alloc> (sizeof (sl_node_base),
+                                           depth + 1, &uptrs);
+      memset (raw, 0, uptrs * sizeof (uintptr_t));
+      auto ret = (sl_node_base *)raw;
+      uintptr_t *endp = (uintptr_t *)(ret + 1);
+      return (new (ret) sl_node_base (depth, endp + 1));
     }
 
   static unsigned int
@@ -100,8 +103,9 @@ struct sl_node_base : public finalizable
           if (lvl <= prev)
             return (lvl);
           else if (prev == SL_MAX_DEPTH ||
-              hw.compare_exchange_weak (prev, prev + 1,
-                std::memory_order_acq_rel, std::memory_order_relaxed))
+                   hw.compare_exchange_weak (prev, prev + 1,
+                                             std::memory_order_acq_rel,
+                                             std::memory_order_relaxed))
             return (prev);
 
           xatomic_spin_nop ();
@@ -110,54 +114,57 @@ struct sl_node_base : public finalizable
 
   void safe_destroy ()
     {
-      sl_dealloc_node (this);
+      dealloc_uptrs<Alloc> (this, this->next + this->nlvl);
     }
 };
 
-template <class T>
-struct sl_node : public sl_node_base
+template <typename T, typename Alloc>
+struct sl_node : public sl_node_base<Alloc>
 {
   T key;
+  typedef sl_node<T, Alloc> _Self;
 
   sl_node (unsigned int lvl, uintptr_t *np, const T& kv) :
-      sl_node_base (lvl, np), key (kv)
+      sl_node_base<Alloc> (lvl, np), key (kv)
     {
     }
 
-  template <class ...Args>
+  template <typename ...Args>
   sl_node (unsigned int lvl, uintptr_t *np, Args... args) :
-      sl_node_base (lvl, np), key (std::forward<Args&&>(args)...)
+      sl_node_base<Alloc> (lvl, np), key (std::forward<Args&&>(args)...)
     {
     }
 
-  static sl_node<T>* copy (unsigned int lvl, const T& k)
+  static sl_node<T, Alloc>* copy (unsigned int lvl, const T& k)
     {
-      uintptr_t *np;
-      auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
-
+      size_t uptrs;
+      uintptr_t *raw = alloc_uptrs<Alloc> (sizeof (_Self), lvl, &uptrs);
+      auto ret = (sl_node<T, Alloc> *)raw;
       try
         {
-          return (new (self) sl_node<T> (lvl, np, k));
+          uintptr_t *endp = (uintptr_t *)(ret + 1);
+          return (new (ret) sl_node<T, Alloc> (lvl, endp, k));
         }
       catch (...)
         {
-          sl_dealloc_node (self);
+          dealloc_uptrs<Alloc> (raw, raw + uptrs);
           throw;
         }
     }
 
-  template <class ...Args>
-  static sl_node<T>* move (unsigned int lvl, Args... args)
+  template <typename ...Args>
+  static sl_node<T, Alloc>* move (unsigned int lvl, Args... args)
     {
-      uintptr_t *np;
-      auto self = (sl_node<T> *)sl_alloc_node (lvl, sizeof (sl_node<T>), &np);
-      return (new (self) sl_node<T> (lvl, np, std::forward<Args&&>(args)...));
+      auto ret = (_Self *)alloc_uptrs<Alloc> (sizeof (_Self), lvl);
+      uintptr_t *np = (uintptr_t *)(ret + 1);
+      return (new (ret) sl_node<T, Alloc> (lvl, np,
+                                           std::forward<Args&&>(args)...));
     }
 
   void safe_destroy ()
     {
       destroy<T> (&this->key);
-      sl_dealloc_node (this);
+      dealloc_uptrs<Alloc> (this, this->next + this->nlvl);
     }
 };
 
@@ -170,10 +177,14 @@ init_preds_succs (uintptr_t *p1, uintptr_t *p2)
 
 } // namespace detail
 
-template <class T, class Cmp = std::less<T> >
+template <typename T, typename Cmp = std::less<T>,
+          typename Alloc = std::allocator<T>>
 struct skip_list
 {
-  std::atomic<detail::sl_node_base *> head;
+  using Nalloc = typename std::allocator_traits<Alloc>::template
+                 rebind_alloc<uintptr_t>;
+
+  std::atomic<detail::sl_node_base<Nalloc> *> head;
   Cmp cmpfn;
   unsigned int max_depth;
   std::atomic<size_t> hi_water { 1 };
@@ -188,8 +199,8 @@ struct skip_list
   typedef const T& const_reference;
   typedef T* pointer;
   typedef const T* const_pointer;
-  typedef skip_list<T, Cmp> _Self;
-  typedef detail::sl_node<T> _Node;
+  typedef skip_list<T, Cmp, Alloc> _Self;
+  typedef detail::sl_node<T, Nalloc> _Node;
 
   uintptr_t _Head () const
     {
@@ -216,7 +227,7 @@ struct skip_list
       this->_Init (c, depth);
     }
 
-  template <class Iter>
+  template <typename Iter>
   skip_list (Iter first, Iter last,
       Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH)
     {
@@ -277,7 +288,7 @@ struct skip_list
               if (this->node == 0)
                 break;
 
-              this->node = detail::sl_node_base::at (this->node, 0);
+              this->node = _Node::at (this->node, 0);
               if ((this->node & detail::SL_XBIT) == 0)
                 break;
             }
@@ -398,11 +409,11 @@ struct skip_list
       return (got || unlink == detail::SL_UNLINK_SKIP ? it : 0);
     }
 
-  optional<T> find (const T& key) const
+  std::optional<T> find (const T& key) const
     {
       cs_guard g;
       uintptr_t rv = this->_Find_preds (0, key, detail::SL_UNLINK_NONE);
-      return (rv ? optional<T> (this->_Getk (rv)) : optional<T> ());
+      return (rv ? std::optional<T> (this->_Getk (rv)) : std::optional<T> ());
     }
 
   bool contains (const T& key) const
@@ -510,7 +521,7 @@ struct skip_list
       if (it == 0)
         return (it);
 
-      detail::sl_node_base *nodep = _Node::get (it);
+      detail::sl_node_base<Nalloc> *nodep = _Node::get (it);
       uintptr_t qx = 0, next = 0;
 
       for (int lvl = nodep->nlvl - 1; lvl >= 0; --lvl)
@@ -545,11 +556,11 @@ struct skip_list
       return (this->_Erase (key) != 0);
     }
 
-  optional<T> remove (const T& key)
+  std::optional<T> remove (const T& key)
     {
       cs_guard g;
       uintptr_t it = this->_Erase (key);
-      return (it ? optional<T> (_Self::_Getk (it)) : optional<T> ());
+      return (it ? std::optional<T> (_Self::_Getk (it)) : std::optional<T> ());
     }
 
   const_iterator cbegin () const
@@ -600,7 +611,7 @@ struct skip_list
     }
 
   template <bool Destroy = false>
-  void _Fini_root (detail::sl_node_base *xroot)
+  void _Fini_root (detail::sl_node_base<Nalloc> *xroot)
     {
       for (uintptr_t run = (uintptr_t)xroot; run != 0; )
         {
@@ -631,7 +642,7 @@ struct skip_list
         }
     }
 
-  template <class Iter>
+  template <typename Iter>
   void assign (Iter first, Iter last)
     {
       _Self tmp (first, last);
@@ -699,7 +710,7 @@ struct skip_list
 namespace std
 {
 
-template <class T, class Cmp>
+template <typename T, typename Cmp>
 void swap (xrcu::skip_list<T, Cmp>& left,
            xrcu::skip_list<T, Cmp>& right)
 {

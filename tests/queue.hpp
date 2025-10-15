@@ -1,20 +1,21 @@
 #ifndef __XRCU_TESTS_QUEUE__
 #define __XRCU_TESTS_QUEUE__   1
 
-#include "../queue.hpp"
+#include "xrcu/queue.hpp"
 #include "utils.hpp"
 #include <thread>
 
 namespace q_test
 {
 
-typedef xrcu::queue<std::string> queue_t;
+typedef xrcu::queue<std::string, test_allocator<std::string>> queue_t;
 
 void test_single_threaded ()
 {
   {
     queue_t q;
     ASSERT (q.empty ());
+    ASSERT (!q.front().has_value ());
     ASSERT (!q.back().has_value ());
   }
 

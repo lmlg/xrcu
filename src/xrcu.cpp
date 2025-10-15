@@ -15,9 +15,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#include "xrcu.hpp"
-#include "xatomic.hpp"
-#include "version.hpp"
+#include "xrcu/xrcu.hpp"
+#include "xrcu/xatomic.hpp"
+#include "xrcu/version.hpp"
 #include <thread>
 #include <mutex>
 #include <atomic>

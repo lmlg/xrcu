@@ -15,8 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#include "lwlock.hpp"
-#include "xatomic.hpp"
+#include "xrcu/lwlock.hpp"
+#include "xrcu/xatomic.hpp"
 
 #if (defined (linux) || defined (__linux) || defined (__linux__)) &&   \
     defined (__BYTE_ORDER__)

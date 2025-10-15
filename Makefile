@@ -11,10 +11,26 @@ endif
 STATIC_LIBS = libxrcu.$(STATIC_EXT)
 SHARED_LIBS = libxrcu.$(DYNAMIC_EXT)
 
-HEADERS = xrcu.hpp stack.hpp hash_table.hpp skip_list.hpp   \
-          xatomic.hpp lwlock.hpp optional.hpp queue.hpp
+ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 
-OBJS = xrcu.o hash_table.o stack.o lwlock.o skip_list.o queue.o utils.o
+I = $(ROOT_DIR)
+S = $(ROOT_DIR)src
+
+HEADERS = $(I)xrcu/xrcu.hpp   \
+          $(I)xrcu/stack.hpp   \
+          $(I)xrcu/hash_table.hpp   \
+          $(I)xrcu/skip_list.hpp   \
+          $(I)xrcu/xatomic.hpp   \
+          $(I)xrcu/lwlock.hpp   \
+          $(I)xrcu/queue.hpp
+
+OBJS = $(S)/xrcu.o   \
+       $(S)/hash_table.o   \
+       $(S)/queue.o   \
+       $(S)/stack.o   \
+       $(S)/lwlock.o   \
+       $(S)/utils.o
+
 LOBJS = $(OBJS:.o=.lo)
 
 TEST_OBJS = $(LOBJS)
@@ -25,7 +41,7 @@ ALL_LIBS = $(STATIC_LIBS) $(SHARED_LIBS)
 
 AR = $(CROSS_COMPILE)ar
 RANLIB = $(CROSS_COMPILE)ranlib
-CXXFLAGS += $(CXXFLAGS_AUTO)
+CXXFLAGS += $(CXXFLAGS_AUTO) -I$(I) -D_DEFAULT_SOURCE
 
 all: $(ALL_LIBS)
 
@@ -53,5 +69,5 @@ install: $(ALL_LIBS)
 	cp $(HEADERS) $(includedir)/xrcu
 
 clean:
-	rm -rf *.o *.lo libxrcu.* tst
+	rm -rf $(S)/*.o $(S)/*.lo libxrcu.* tst
 

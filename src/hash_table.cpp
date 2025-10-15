@@ -15,7 +15,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#include "hash_table.hpp"
+#include "xrcu/hash_table.hpp"
 #include <new>
 #include <thread>
 #include <cstdint>
@@ -25,17 +25,6 @@ namespace xrcu
 
 namespace detail
 {
-
-inline ht_vector* ht_vector_make (size_t n)
-{
-  void *p = ::operator new (sizeof (ht_vector) + n * sizeof (uintptr_t));
-  return (new (p) ht_vector ((uintptr_t *)((char *)p + sizeof (ht_vector))));
-}
-
-void ht_vector::safe_destroy ()
-{
-  ::operator delete (this);
-}
 
 static const size_t PRIMES[] =
 {
@@ -52,6 +41,11 @@ static const size_t PRIMES[] =
 #endif
 };
 
+size_t vec_psize (size_t pidx)
+{
+  return (PRIMES[pidx]);
+}
+
 size_t find_hsize (size_t size, float mvr, size_t& pidx)
 {
   intptr_t i1 = 0, i2 = sizeof (PRIMES) / sizeof (PRIMES[0]);
@@ -66,28 +60,6 @@ size_t find_hsize (size_t size, float mvr, size_t& pidx)
 
   pidx = i1;
   return ((size_t)(PRIMES[i1] * mvr));
-}
-
-ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val)
-{
-  size_t entries = PRIMES[pidx], tsize = table_idx (entries);
-#ifdef XRCU_HAVE_XATOMIC_DCAS
-  auto ret = ht_vector_make (tsize + 1);
-
-  // Ensure correct alignment for double-width CAS.
-  if ((uintptr_t)ret->data % (2 * sizeof (uintptr_t)) != 0)
-    ++ret->data;
-#else
-  auto ret = ht_vector_make (tsize);
-#endif
-
-  for (size_t i = 0; i < tsize; i += 2)
-    ret->data[i] = key, ret->data[i + 1] = val;
-
-  ret->entries = entries;
-  ret->pidx = pidx;
-
-  return (ret);
 }
 
 } // namespace detail

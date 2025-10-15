@@ -18,12 +18,14 @@
 #ifndef __XRCU_QUEUE_HPP__
 #define __XRCU_QUEUE_HPP__   1
 
+#include "memory.hpp"
 #include "xrcu.hpp"
-#include "optional.hpp"
 #include "xatomic.hpp"
 #include "utils.hpp"
-#include <cstddef>
 #include <atomic>
+#include <cstddef>
+#include <memory>
+#include <optional>
 #include <type_traits>
 #include <initializer_list>
 
@@ -59,14 +61,18 @@ static inline uint64_t upsize (uint64_t x)
   return (x + 1);
 }
 
-struct alignas (uintptr_t) q_data : public finalizable
+struct alignas (uintptr_t) q_base : public finalizable
 {
   uintptr_t *ptrs;
   size_t cap;
   std::atomic<size_t> wr_idx;
   std::atomic<size_t> rd_idx;
 
-  static q_data* make (size_t cnt, uintptr_t empty);
+  q_base ()
+    {
+      this->wr_idx.store (0, std::memory_order_relaxed);
+      this->rd_idx.store (0, std::memory_order_relaxed);
+    }
 
   size_t _Wridx () const
     {
@@ -78,48 +84,8 @@ struct alignas (uintptr_t) q_data : public finalizable
       return (this->rd_idx.load (std::memory_order_relaxed));
     }
 
-  bool push (uintptr_t val, uintptr_t xbit, uintptr_t empty)
-    {
-      while (true)
-        {
-          size_t curr = this->_Wridx ();
-          if (curr >= this->cap)
-            return (false);
-
-          uintptr_t xv = this->ptrs[curr];
-          if ((xv & xbit) != 0)
-            return (false);
-          else if (xv == empty &&
-              xatomic_cas_bool (&this->ptrs[curr], xv, val))
-            {
-              this->wr_idx.fetch_add (1, std::memory_order_acq_rel);
-              return (true);
-            }
-
-          xatomic_spin_nop ();
-        }
-    }
-
-  uintptr_t pop (uintptr_t xbit, uintptr_t dfl)
-    {
-      while (true)
-        {
-          size_t curr = this->_Rdidx ();
-          if (curr >= this->_Wridx ())
-            return (dfl);
-
-          uintptr_t rv = this->ptrs[curr];
-          if (rv & xbit)
-            return (xbit);
-          else if (rv != dfl && xatomic_cas_bool (&this->ptrs[curr], rv, dfl))
-            {
-              this->rd_idx.fetch_add (1, std::memory_order_relaxed);
-              return (rv);
-            }
-
-          xatomic_spin_nop ();
-        }
-    }
+  bool push (uintptr_t val, uintptr_t xbit, uintptr_t empty);
+  uintptr_t pop (uintptr_t xbit, uintptr_t dfl);
 
   uintptr_t front () const
     {
@@ -135,44 +101,53 @@ struct alignas (uintptr_t) q_data : public finalizable
       return (this->ptrs[idx - 1]);
     }
 
+  static void replace (std::atomic<q_base *>&, q_base *,
+                       q_base *, uintptr_t);
+  static void clear (std::atomic<q_base *>&, q_base *,
+                     q_base *, uintptr_t);
+
   size_t size () const
     {
       return (this->_Wridx () - this->_Rdidx ());
     }
-
-  void safe_destroy ();
 };
-
-inline void
-q_replace_cb (std::atomic<q_data *>& ptr, q_data *old, q_data *nq, uintptr_t)
-{
-  finalize (old);
-  ptr.store (nq, std::memory_order_relaxed);
-}
-
-inline void
-q_clear_cb (std::atomic<q_data *>&, q_data *old, q_data *, uintptr_t empty)
-{
-  old->wr_idx.store (old->cap, std::memory_order_relaxed);
-  old->rd_idx.store (old->cap, std::memory_order_relaxed);
-
-  for (size_t i = 0; i < old->cap; ++i)
-    old->ptrs[i] = empty;
-
-  old->rd_idx.store (0, std::memory_order_release);
-  old->wr_idx.store (0, std::memory_order_release);
-}
 
 } // namespace detail
 
-template <class T>
+template <typename T, typename Alloc = std::allocator<T>>
 struct queue
 {
   typedef detail::wrapped_traits<(sizeof (T) < sizeof (uintptr_t) &&
-      std::is_integral<T>::value) || (std::is_pointer<T>::value &&
-      alignof (T) >= 8), T> val_traits;
+                                  std::is_integral<T>::value), T> val_traits;
+  using Nalloc = typename std::allocator_traits<Alloc>::template
+                          rebind_alloc<uintptr_t>;
 
-  std::atomic<detail::q_data *> impl;
+  struct q_data : public detail::q_base
+    {
+      q_data ()
+        {
+        }
+
+      static q_data* make (size_t cnt)
+        {
+          auto ret = (q_data *)alloc_uptrs<Nalloc> (sizeof (q_data), cnt + 1);
+          new (ret) q_data ();
+          ret->ptrs = (uintptr_t *)(ret + 1);
+          ret->cap = cnt;
+
+          for (uintptr_t *p = ret->ptrs; p != ret->ptrs + cnt + 1; )
+            *p++ = val_traits::FREE;
+
+          return (ret);
+        }
+
+      void safe_destroy ()
+        {
+          dealloc_uptrs<Nalloc> (this, this->ptrs + this->cap + 1);
+        }
+    };
+
+  std::atomic<detail::q_base *> impl;
 
   typedef T value_type;
   typedef T& reference;
@@ -184,33 +159,33 @@ struct queue
 
   void _Init (size_t size)
     {
-      this->impl = detail::q_data::make (size, val_traits::FREE);
+      this->impl = q_data::make (size);
     }
 
-  detail::q_data* _Data ()
+  q_data* _Data ()
     {
-      return (this->impl.load (std::memory_order_relaxed));
+      return ((q_data *)this->impl.load (std::memory_order_relaxed));
     }
 
-  const detail::q_data* _Data () const
+  const q_data* _Data () const
     {
-      return (this->impl.load (std::memory_order_relaxed));
+      return ((const q_data *)this->impl.load (std::memory_order_relaxed));
     }
 
-  void _Set_data (detail::q_data *qdp)
+  void _Set_data (q_data *qdp)
     {
       this->impl.store (qdp, std::memory_order_relaxed);
     }
 
   struct iterator : public cs_guard
     {
-      const detail::q_data *qdp;
+      const q_data *qdp;
       size_t idx;
       uintptr_t c_val;
 
       typedef std::forward_iterator_tag iterator_category;
 
-      iterator (const detail::q_data *q, size_t s) : qdp (q), idx (s)
+      iterator (const q_data *q, size_t s) : qdp (q), idx (s)
         {
           if (this->qdp)
             this->_Adv ();
@@ -277,11 +252,11 @@ struct queue
       this->_Init (8);
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   void _Init (T1 n, const T2& val, std::true_type)
     {
       size_t ns = (size_t)n;
-      auto qdp = detail::q_data::make (detail::upsize (ns), val_traits::FREE);
+      auto qdp = q_data::make (detail::upsize (ns));
 
       try
         {
@@ -300,10 +275,10 @@ struct queue
       this->_Set_data (qdp);
     }
 
-  template <class It>
+  template <typename It>
   void _Init (It first, It last, std::false_type)
     {
-      auto qdp = detail::q_data::make (8, val_traits::FREE);
+      auto qdp = q_data::make (8);
       try
         {
           for (size_t i = 0; first != last; ++first)
@@ -313,7 +288,7 @@ struct queue
 
               if (i == qdp->cap)
                 {
-                  auto q2 = detail::q_data::make (i * 2, val_traits::FREE);
+                  auto q2 = q_data::make (i * 2);
                   for (size_t j = 0; j < i; ++j)
                     q2->ptrs[j] = qdp->ptrs[j];
 
@@ -331,17 +306,17 @@ struct queue
       this->_Set_data (qdp);
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   queue (T1 first, T2 last)
     {
       this->_Init (first, last, typename std::is_integral<T1>::type ());
     }
 
-  queue (const queue<T>& right) : queue (right.begin (), right.end ())
+  queue (const queue<T, Alloc>& right) : queue (right.begin (), right.end ())
     {
     }
 
-  queue (queue<T>&& right)
+  queue (queue<T, Alloc>&& right)
     {
       this->_Set_data (right._Data ());
       right._Set_data (nullptr);
@@ -351,7 +326,7 @@ struct queue
     {
     }
 
-  bool _Rearm (uintptr_t elem, detail::q_data *qdp)
+  bool _Rearm (uintptr_t elem, q_data *qdp)
     {
       size_t ix;
       uintptr_t prev;
@@ -372,21 +347,23 @@ struct queue
           while (true)
             {
               if (qdp != this->_Data ())
-                // Impl pointer has been installed - Return.
+                // The pointer has been installed - Return.
                 return (false);
               else if ((qdp->ptrs[ix] & val_traits::XBIT) == 0)
-                /* The thread rearming the queue raised an exception.
-                 * Recurse and see if we can pick up the slack. */
+                /*
+                 * The thread rearming the queue raised an exception.
+                 * Recurse and see if we can pick up the slack.
+                 */
                 return (this->_Rearm (elem, qdp));
 
               xatomic_spin_nop ();
             }
         }
 
-      detail::q_data *nq = nullptr;
+      q_data *nq = nullptr;
       try
         {
-          nq = detail::q_data::make (qdp->cap * 2, val_traits::FREE);
+          nq = q_data::make (qdp->cap * 2);
         }
       catch (...)
         {
@@ -424,14 +401,14 @@ struct queue
       this->_Push (val_traits::make (elem));
     }
 
-  template <class ...Args>
+  template <typename ...Args>
   void emplace (Args&& ...args)
     {
       cs_guard g;
       this->_Push (val_traits::make (std::forward<Args>(args)...));
     }
 
-  optional<T> pop ()
+  std::optional<T> pop ()
     {
       cs_guard g;
 
@@ -442,12 +419,11 @@ struct queue
 
           if (val == val_traits::DELT)
             // Queue is empty.
-            return (optional<T> ());
+            return (std::optional<T> ());
           else if (val != val_traits::XBIT)
             {
               val_traits::destroy (val);
-              optional<T> rv (val_traits::get (val));
-              return (rv);
+              return (std::optional<T> (val_traits::get (val)));
             }
 
           while (qdp == this->_Data ())
@@ -455,7 +431,7 @@ struct queue
         }
     }
 
-  optional<T> front () const
+  std::optional<T> front () const
     {
       cs_guard g;
       while (true)
@@ -467,12 +443,12 @@ struct queue
               continue;
             }
           else if (rv == val_traits::FREE)
-            return (optional<T> ());
-          return (optional<T> (val_traits::get (rv)));
+            return (std::optional<T> ());
+          return (std::optional<T> (val_traits::get (rv)));
         }
     }
 
-  optional<T> back () const
+  std::optional<T> back () const
     {
       cs_guard g;
       while (true)
@@ -484,8 +460,8 @@ struct queue
               continue;
             }
           else if (rv == val_traits::FREE)
-            return (optional<T> ());
-          return (optional<T> (val_traits::get (rv)));
+            return (std::optional<T> ());
+          return (std::optional<T> (val_traits::get (rv)));
         }
     }
 
@@ -527,9 +503,9 @@ struct queue
       return (this->end ());
     }
 
-  void _Call_cb (detail::q_data *nq, uintptr_t xv,
-    void (*f) (std::atomic<detail::q_data *>&,
-               detail::q_data *, detail::q_data *, uintptr_t))
+  void _Call_cb (q_data *nq, uintptr_t xv,
+                 void (*f) (std::atomic<detail::q_base *>&, detail::q_base *,
+                            detail::q_base *, uintptr_t))
     {
       while (true)
         {
@@ -566,16 +542,16 @@ struct queue
         }
     }
 
-  void _Assign (detail::q_data *nq)
+  void _Assign (q_data *nq)
     {
-      this->_Call_cb (nq, 0, detail::q_replace_cb);
+      this->_Call_cb (nq, 0, detail::q_base::replace);
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   void assign (T1 first, T2 last)
     {
       cs_guard g;
-      auto tmp = queue<T> (first, last);
+      auto tmp = queue<T, Alloc> (first, last);
       this->_Assign (tmp._Data ());
       tmp._Set_data (nullptr);
     }
@@ -585,7 +561,7 @@ struct queue
       this->assign (lst.begin (), lst.end ());
     }
 
-  queue<T>& operator= (const queue<T>& right)
+  queue<T, Alloc>& operator= (const queue<T, Alloc>& right)
     {
       if (this == &right)
         return (*this);
@@ -594,7 +570,7 @@ struct queue
       return (*this);
     }
 
-  bool operator== (const queue<T>& right) const
+  bool operator== (const queue<T, Alloc>& right) const
     {
       auto x1 = this->cbegin (), x2 = this->cend ();
       auto y1 = right.cbegin (), y2 = right.cend ();
@@ -606,12 +582,12 @@ struct queue
       return (x1 == x2 && y1 == y2);
     }
 
-  bool operator!= (const queue<T>& right) const
+  bool operator!= (const queue<T, Alloc>& right) const
     {
       return (!(*this == right));
     }
 
-  bool operator< (const queue<T>& right) const
+  bool operator< (const queue<T, Alloc>& right) const
     {
       auto x1 = this->cbegin (), x2 = this->cend ();
       auto y1 = right.cbegin (), y2 = right.cend ();
@@ -627,22 +603,22 @@ struct queue
       return (y1 != y2);
     }
 
-  bool operator> (const queue<T>& right) const
+  bool operator> (const queue<T, Alloc>& right) const
     {
       return (right < *this);
     }
 
-  bool operator<= (const queue<T>& right) const
+  bool operator<= (const queue<T, Alloc>& right) const
     {
       return (!(right < *this));
     }
 
-  bool operator>= (const queue<T>& right) const
+  bool operator>= (const queue<T, Alloc>& right) const
     {
       return (!(*this < right));
     }
 
-  queue<T>& operator= (queue<T>&& right)
+  queue<T, Alloc>& operator= (queue<T, Alloc>&& right)
     {
       auto prev = this->impl.exchange (right._Data (),
                                        std::memory_order_acq_rel);
@@ -651,7 +627,7 @@ struct queue
       return (*this);
     }
 
-  static void _Destroy (detail::q_data *qdp)
+  static void _Destroy (q_data *qdp)
     {
       for (size_t i = qdp->_Rdidx (); i < qdp->cap; ++i)
         {
@@ -666,7 +642,7 @@ struct queue
   void clear ()
     {
       cs_guard g;
-      this->_Call_cb (nullptr, val_traits::FREE, detail::q_clear_cb);
+      this->_Call_cb (nullptr, val_traits::FREE, detail::q_base::clear);
     }
 
   size_t _Lock ()
@@ -687,7 +663,7 @@ struct queue
         }
     }
 
-  void swap (queue<T>& right)
+  void swap (queue<T, Alloc>& right)
     {
       if (this == &right)
         return;
@@ -725,8 +701,8 @@ struct queue
 namespace std
 {
 
-template <class T>
-void swap (xrcu::queue<T>& left, xrcu::queue<T>& right)
+template <typename T, typename Alloc>
+void swap (xrcu::queue<T, Alloc>& left, xrcu::queue<T, Alloc>& right)
 {
   left.swap (right);
 }

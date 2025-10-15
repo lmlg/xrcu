@@ -1,4 +1,4 @@
-/* Definitions for the queue template type.
+/* Declarations for memory-related interfaces.
 
    This file is part of xrcu.
 
@@ -15,38 +15,35 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#include "queue.hpp"
-#include <new>
+#ifndef __XRCU_MEMORY_HPP__
+#define __XRCU_MEMORY_HPP__   1
+
+#include <cstddef>
+#include <cstdint>
 
 namespace xrcu
 {
 
-namespace detail
+template <typename Alloc>
+uintptr_t* alloc_uptrs (size_t tsize, size_t nr_uptrs,
+                        size_t *upp = nullptr)
 {
+  size_t total = tsize + nr_uptrs * sizeof (uintptr_t);
+  size_t uptrs = (total / sizeof (uintptr_t)) +
+                 ((total % sizeof (uintptr_t)) != 0);
+  if (upp)
+    *upp = uptrs;
 
-q_data* q_data::make (size_t cnt, uintptr_t empty)
-{
-  size_t ns = cnt + 1;
-  q_data *ret = (q_data *)::operator new (sizeof (*ret) +
-                                          ns * sizeof (uintptr_t));
-
-  new (ret) q_data ();
-  ret->ptrs = (uintptr_t *)(ret + 1);
-  ret->cap = cnt;
-
-  for (uintptr_t *p = ret->ptrs; p != ret->ptrs + ns; )
-    *p++ = empty;
-
-  ret->wr_idx.store (0, std::memory_order_relaxed);
-  ret->rd_idx.store (0, std::memory_order_relaxed);
-  return (ret);
+  return (Alloc().allocate (uptrs));
 }
 
-void q_data::safe_destroy ()
+template <typename Alloc>
+void dealloc_uptrs (void *base, void *end)
 {
-  ::operator delete (this);
+  size_t total = (char *)end - (char *)base;
+  Alloc().deallocate ((uintptr_t *)base, total / sizeof (uintptr_t));
 }
-
-} // namespace detail
 
 } // namespace xrcu
+
+#endif

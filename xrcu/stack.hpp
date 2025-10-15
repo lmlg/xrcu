@@ -19,11 +19,12 @@
 #define __XRCU_STACK_HPP__   1
 
 #include "xrcu.hpp"
-#include "optional.hpp"
 #include <atomic>
 #include <cstddef>
-#include <utility>
 #include <initializer_list>
+#include <memory>
+#include <optional>
+#include <utility>
 
 namespace std
 {
@@ -96,11 +97,9 @@ struct stack_iter_base : public cs_guard
 
 } // namespace detail.
 
-template <class T>
+template <typename T, typename Alloc = std::allocator<T>>
 struct stack
 {
-  std::atomic<detail::stack_node_base *> hnode;
-
   struct _Stknode : public detail::stack_node_base, finalizable
     {
       T value;
@@ -113,18 +112,45 @@ struct stack
         {
         }
 
-      template <class ...Args>
+      template <typename ...Args>
       _Stknode (Args&&... args) : value (std::forward<Args>(args)...)
         {
+        }
+
+      static _Stknode* alloc (const T& val)
+        {
+          auto ret = Nalloc().allocate (1);
+          try
+            {
+              new (ret) _Stknode (val);
+              return (ret);
+            }
+          catch (...)
+            {
+              Nalloc().deallocate (ret, 1);
+              throw;
+            }
+        }
+
+      template <typename ...Args>
+      static _Stknode* move (Args... args)
+        {
+          auto ret = Nalloc().allocate (1);
+          new (ret) _Stknode (std::forward<Args&&>(args)...);
+          return (ret);
         }
 
       void safe_destroy ()
         {
           auto runp = this->next;
-          delete this;
-          stack<T>::_Clean_nodes (runp);
+          stack<T, Alloc>::_Destroy (this);
+          stack<T, Alloc>::_Clean_nodes (runp);
         }
     };
+
+  std::atomic<detail::stack_node_base *> hnode;
+  using Nalloc = typename std::allocator_traits<Alloc>::template
+                 rebind_alloc<_Stknode>;
 
   typedef _Stknode node_type;
   typedef T value_type;
@@ -140,17 +166,23 @@ struct stack
       this->hnode.store (ptr, std::memory_order_relaxed);
     }
 
+  static void _Destroy (_Stknode *node)
+    {
+      node->value.~T ();
+      Nalloc().deallocate (node, 1);
+    }
+
   static void _Clean_nodes (detail::stack_node_base *runp)
     {
       while (runp)
         {
           auto tmp = runp->next;
-          delete (node_type *)runp;
+          stack<T, Alloc>::_Destroy ((_Stknode *)runp);
           runp = tmp;
         }
     }
 
-  template <class T1>
+  template <typename T1>
   void _Init (T1 first, T1 last, std::false_type)
     {
       detail::stack_node_base *runp = nullptr, **outp = &runp;
@@ -158,7 +190,7 @@ struct stack
         {
           for (; first != last; ++first)
             {
-              *outp = new node_type (*first);
+              *outp = _Stknode::alloc (*first);
               outp = &(*outp)->next;
             }
         }
@@ -171,7 +203,7 @@ struct stack
       this->_Reset (runp);
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   void _Init (T1 n, const T2& value, std::true_type)
     {
       detail::stack_node_base *runp = nullptr, **outp = &runp;
@@ -180,7 +212,7 @@ struct stack
         {
           for (T1 x = 0; x != n; ++x)
             {
-              *outp = new node_type (value);
+              *outp = _Stknode::alloc (value);
               outp = &(*outp)->next;
             }
         }
@@ -198,7 +230,7 @@ struct stack
       this->_Reset (nullptr);
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   stack (T1 first, T2 last)
     {
       this->_Reset (nullptr);
@@ -209,11 +241,11 @@ struct stack
     {
     }
 
-  stack (const stack<T>& right) : stack (right.begin (), right.end ())
+  stack (const stack<T, Alloc>& right) : stack (right.begin (), right.end ())
     {
     }
 
-  stack (stack<T>&& right)
+  stack (stack<T, Alloc>&& right)
     {
       this->_Reset (right._Root ());
       right._Reset (nullptr);
@@ -222,32 +254,32 @@ struct stack
   void push (const T& value)
     {
       cs_guard g;
-      detail::stack_node_base::push (this->hnode, new node_type (value));
+      detail::stack_node_base::push (this->hnode, _Stknode::alloc (value));
     }
 
   void push (T&& value)
     {
       cs_guard g;
       detail::stack_node_base::push (this->hnode,
-        new node_type (std::move (value)));
+                                     _Stknode::move (std::move (value)));
     }
 
-  template <class Iter>
+  template <typename Iter>
   void _Push (Iter first, Iter last, std::false_type)
     {
       if (first == last)
         return;
 
-      node_type *np;
+      node_type *np = nullptr;
 
       try
         {
-          np = new node_type (*first);
+          np = _Stknode::alloc (*first);
           auto **outp = &np->next;
 
           for (++first; first != last; ++first)
             {
-              node_type *tmp = new node_type (*first);
+              node_type *tmp = _Stknode::alloc (*first);
               *outp = tmp, outp = &tmp->next;
             }
 
@@ -260,22 +292,22 @@ struct stack
         }
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   void _Push (T1 n, const T2& value, std::true_type)
     {
       if (n == 0)
         return;
 
-      node_type *np;
+      node_type *np = nullptr;
 
       try
         {
-          np = new node_type (value);
+          np = _Stknode::alloc (value);
           auto **outp = &np->next;
 
           for (; n != 0; --n)
             {
-              node_type *tmp = new node_type (value);
+              node_type *tmp = _Stknode::alloc (value);
               *outp = tmp, outp = &tmp->next;
             }
 
@@ -288,28 +320,28 @@ struct stack
         }
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   void push (T1 first, T2 last)
     {
       this->_Push (first, last, typename std::is_integral<T1>::type ());
     }
 
-  template <class ...Args>
+  template <typename...Args>
   void emplace (Args&& ...args)
     {
-      detail::stack_node_base::push (this->hnode,
-        new node_type (std::forward<Args>(args)...));
+      auto np = _Stknode::move (std::forward<Args&&>(args)...);
+      detail::stack_node_base::push (this->hnode, np);
     }
 
-  optional<T> pop ()
+  std::optional<T> pop ()
     {
       cs_guard g;
       auto node = detail::stack_node_base::pop (this->hnode);
 
       if (!node)
-        return (optional<T> ());
+        return (std::optional<T> ());
 
-      optional<T> ret { ((node_type *)node)->value };
+      std::optional<T> ret { ((node_type *)node)->value };
       finalize ((node_type *)node);
       return (ret);
     }
@@ -324,11 +356,11 @@ struct stack
       return ((node_type *)detail::stack_node_base::root (this->hnode));
     }
 
-  optional<T> top ()
+  std::optional<T> top ()
     {
       cs_guard g;
       auto node = this->_Root ();
-      return (node ? optional<T> { node->value } : optional<T> ());
+      return (node ? std::optional<T> { node->value } : std::optional<T> ());
     }
 
   struct iterator : public detail::stack_iter_base
@@ -432,7 +464,7 @@ struct stack
       return (this->_Root () == nullptr);
     }
 
-  void swap (stack<T>& right)
+  void swap (stack<T, Alloc>& right)
     {
       cs_guard g;
 
@@ -440,7 +472,7 @@ struct stack
         detail::stack_node_base::swap (this->hnode, right.hnode);
     }
 
-  stack<T>& operator= (const stack<T>& right)
+  stack<T, Alloc>& operator= (const stack<T, Alloc>& right)
     {
       cs_guard g;
 
@@ -450,7 +482,7 @@ struct stack
       return (*this);
     }
 
-  stack<T>& operator= (stack<T>&& right)
+  stack<T, Alloc>& operator= (stack<T, Alloc>&& right)
     {
       this->swap (right);
       finalize (right._Root ());
@@ -458,7 +490,7 @@ struct stack
       return (*this);
     }
 
-  bool operator== (const stack<T>& right) const
+  bool operator== (const stack<T, Alloc>& right) const
     {
       auto x1 = this->cbegin (), x2 = this->cend ();
       auto y1 = right.cbegin (), y2 = right.cend ();
@@ -470,12 +502,12 @@ struct stack
       return (x1 == x2 && y1 == y2);
     }
 
-  bool operator!= (const stack<T>& right) const
+  bool operator!= (const stack<T, Alloc>& right) const
     {
       return (!(*this == right));
     }
 
-  bool operator< (const stack<T>& right) const
+  bool operator< (const stack<T, Alloc>& right) const
     {
       auto x1 = this->cbegin (), x2 = this->cend ();
       auto y1 = right.cbegin (), y2 = right.cend ();
@@ -491,17 +523,17 @@ struct stack
       return (y1 != y2);
     }
 
-  bool operator> (const stack<T>& right) const
+  bool operator> (const stack<T, Alloc>& right) const
     {
       return (right < *this);
     }
 
-  bool operator<= (const stack<T>& right) const
+  bool operator<= (const stack<T, Alloc>& right) const
     {
       return (!(right < *this));
     }
 
-  bool operator>= (const stack<T>& right) const
+  bool operator>= (const stack<T, Alloc>& right) const
     {
       return (!(*this < right));
     }
@@ -512,10 +544,10 @@ struct stack
       finalize ((node_type *)prev);
     }
 
-  template <class T1, class T2>
+  template <typename T1, typename T2>
   void assign (T1 first, T2 last)
     {
-      auto tmp = stack<T> (first, last);
+      auto tmp = stack<T, Alloc> (first, last);
       this->swap (tmp);
       finalize (tmp._Root ());
       tmp._Reset (nullptr);
@@ -542,8 +574,8 @@ struct stack
 namespace std
 {
 
-template <class T>
-void swap (xrcu::stack<T>& left, xrcu::stack<T>& right)
+template <typename T, typename Alloc>
+void swap (xrcu::stack<T, Alloc>& left, xrcu::stack<T, Alloc>& right)
 {
   return (left.swap (right));
 }

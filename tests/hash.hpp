@@ -1,13 +1,14 @@
 #ifndef __XRCU_TESTS_HASH__
 #define __XRCU_TESTS_HASH__   1
 
-#include "../hash_table.hpp"
+#include "xrcu/hash_table.hpp"
 #include "utils.hpp"
 #include <thread>
 #include <algorithm>
 #include <cstdio>
 
-typedef xrcu::hash_table<int, std::string> table_t;
+typedef xrcu::hash_table<int, std::string, std::equal_to<int>,
+                         std::hash<int>, test_allocator<int>> table_t;
 
 namespace ht_test
 {

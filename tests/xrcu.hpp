@@ -1,7 +1,7 @@
 #ifndef __XRCU_TESTS_XRCU__
 #define __XRCU_TESTS_XRCU__   1
 
-#include "../xrcu.hpp"
+#include "xrcu/xrcu.hpp"
 #include "utils.hpp"
 #include <thread>
 #include <atomic>

@@ -20,14 +20,16 @@
 
 #include "xrcu.hpp"
 #include "xatomic.hpp"
-#include "optional.hpp"
 #include "lwlock.hpp"
+#include "memory.hpp"
 #include "utils.hpp"
+
 #include <atomic>
-#include <functional>
-#include <type_traits>
-#include <initializer_list>
 #include <cstddef>
+#include <functional>
+#include <initializer_list>
+#include <optional>
+#include <type_traits>
 
 namespace std
 {
@@ -45,6 +47,9 @@ inline constexpr size_t table_idx (size_t idx)
   return (idx * 2);
 }
 
+extern size_t vec_psize (size_t pidx);
+
+template <typename Alloc>
 struct alignas (uintptr_t) ht_vector : public finalizable
 {
   uintptr_t *data;
@@ -54,7 +59,33 @@ struct alignas (uintptr_t) ht_vector : public finalizable
 
   ht_vector (uintptr_t *ep) : data (ep) {}
 
-  void safe_destroy ();
+  static ht_vector<Alloc>* make (size_t pidx, uintptr_t key, uintptr_t val)
+    {
+      size_t entries = vec_psize (pidx), tsize = table_idx (entries);
+#ifdef XRCU_HAVE_XATOMIC_DCAS
+      auto raw = alloc_uptrs<Alloc> (sizeof (ht_vector<Alloc>), tsize + 1);
+      uintptr_t *p = (uintptr_t *)((char *)raw + sizeof (ht_vector<Alloc>));
+
+      // Ensure correct alignment for double-width CAS.
+      if ((uintptr_t)p % (2 * sizeof (uintptr_t)) != 0)
+        ++p;
+#else
+      auto raw = alloc_uptrs<Alloc> (sizeof (ht_vector<Alloc>), tsize);
+      uintptr_t *p = (uintptr_t *)(ret + 1);
+#endif
+      auto ret = new ((ht_vector<Alloc> *)raw) ht_vector<Alloc> (p);
+      for (size_t i = 0; i < tsize; i += 2)
+        ret->data[i] = key, ret->data[i + 1] = val;
+
+      ret->entries = entries;
+      ret->pidx = pidx;
+      return (ret);
+    }
+
+  void safe_destroy ()
+    {
+      dealloc_uptrs<Alloc> (this, this->data + this->size ());
+    }
 
   size_t size () const
     {
@@ -71,13 +102,12 @@ secondary_hash (size_t hval)
 
 extern size_t find_hsize (size_t size, float ldf, size_t& pidx);
 
-extern ht_vector* make_htvec (size_t pidx, uintptr_t key, uintptr_t val);
-
+template <typename Alloc>
 struct ht_sentry
 {
   lwlock *lock;
   uintptr_t xbit;
-  ht_vector *vector = nullptr;
+  ht_vector<Alloc> *vector = nullptr;
 
   ht_sentry (lwlock *lp, uintptr_t xb) : lock (lp), xbit (~xb)
     {
@@ -94,10 +124,10 @@ struct ht_sentry
     }
 };
 
-template <class Ktraits, class Vtraits>
+template <typename Ktraits, typename Vtraits, typename Alloc>
 struct ht_iter : public cs_guard
 {
-  const ht_vector *vec = nullptr;
+  const ht_vector<Alloc> *vec = nullptr;
   size_t idx = 0;
   uintptr_t c_key;
   uintptr_t c_val;
@@ -105,7 +135,7 @@ struct ht_iter : public cs_guard
 
   typedef std::forward_iterator_tag iterator_category;
 
-  void _Init (const ht_vector *vp)
+  void _Init (const ht_vector<Alloc> *vp)
     {
       this->vec = vp;
       this->_Adv ();
@@ -115,13 +145,13 @@ struct ht_iter : public cs_guard
     {
     }
 
-  ht_iter (const ht_iter<Ktraits, Vtraits>& right) :
+  ht_iter (const ht_iter<Ktraits, Vtraits, Alloc>& right) :
       vec (right.vec), idx (right.idx), c_key (right.c_key),
       c_val (right.c_val), valid (right.valid)
     {
     }
 
-  ht_iter (ht_iter<Ktraits, Vtraits>&& right) :
+  ht_iter (ht_iter<Ktraits, Vtraits, Alloc>&& right) :
       vec (right.vec), idx (right.idx), c_key (right.c_key),
       c_val (right.c_val), valid (right.valid)
     {
@@ -148,13 +178,13 @@ struct ht_iter : public cs_guard
         }
     }
 
-  bool operator== (const ht_iter<Ktraits, Vtraits>& right) const
+  bool operator== (const ht_iter<Ktraits, Vtraits, Alloc>& right) const
     {
       return ((!this->valid && !right.valid) ||
-        (this->vec == right.vec && this->idx == right.idx));
+              (this->vec == right.vec && this->idx == right.idx));
     }
 
-  bool operator!= (const ht_iter<Ktraits, Vtraits>& right)
+  bool operator!= (const ht_iter<Ktraits, Vtraits, Alloc>& right)
     {
       return (!(*this == right));
     }
@@ -178,22 +208,32 @@ struct ht_inserter
   void free (uintptr_t) {}
 };
 
+inline intptr_t
+compute_fsize (float loadf, size_t entries)
+{
+  return ((intptr_t)(loadf * entries));
+}
+
 } // namespace detail
 
-template <class KeyT, class ValT,
-  class EqFn = std::equal_to<KeyT>,
-  class HashFn = std::hash<KeyT> >
+template <typename KeyT, typename ValT,
+          typename EqFn = std::equal_to<KeyT>,
+          typename HashFn = std::hash<KeyT>,
+          typename Alloc = std::allocator<std::pair<KeyT, ValT>>>
 struct hash_table
 {
-  typedef detail::wrapped_traits<(sizeof (KeyT) < sizeof (uintptr_t) &&
-      std::is_integral<KeyT>::value) || (std::is_pointer<KeyT>::value &&
-      alignof (KeyT) >= 8), KeyT> key_traits;
+  typedef detail::wrapped_traits<(
+      sizeof (KeyT) < sizeof (uintptr_t) &&
+      std::is_integral<KeyT>::value), KeyT> key_traits;
 
-  typedef detail::wrapped_traits<(sizeof (ValT) < sizeof (uintptr_t) &&
-      std::is_integral<ValT>::value) || (std::is_pointer<ValT>::value &&
-      alignof (ValT) >= 8), ValT> val_traits;
+  typedef detail::wrapped_traits<(
+      sizeof (ValT) < sizeof (uintptr_t) &&
+      std::is_integral<ValT>::value), ValT> val_traits;
 
-  typedef hash_table<KeyT, ValT, EqFn, HashFn> self_type;
+  using Nalloc = typename std::allocator_traits<Alloc>::template
+                 rebind_alloc<uintptr_t>;
+
+  typedef hash_table<KeyT, ValT, EqFn, HashFn, Alloc> self_type;
   typedef KeyT key_type;
   typedef ValT mapped_type;
   typedef std::pair<KeyT, ValT> value_type;
@@ -206,7 +246,7 @@ struct hash_table
   typedef ptrdiff_t difference_type;
   typedef size_t size_type;
 
-  detail::ht_vector *vec;
+  detail::ht_vector<Nalloc> *vec;
   EqFn eqfn;
   HashFn hashfn;
   float loadf = 0.85f;
@@ -237,9 +277,8 @@ struct hash_table
     {
       this->_Set_loadf (ldf);
       size_t pidx, gt = detail::find_hsize (size, this->loadf, pidx);
-
-      this->vec = detail::make_htvec (pidx,
-        key_traits::FREE, val_traits::FREE);
+      this->vec = detail::ht_vector<Nalloc>::make (pidx, key_traits::FREE,
+                                                   val_traits::FREE);
       this->eqfn = e;
       this->hashfn = h;
       this->grow_limit.store (gt, std::memory_order_relaxed);
@@ -247,14 +286,14 @@ struct hash_table
     }
 
   hash_table (size_t size = 0, float ldf = 0.85f,
-      EqFn e = EqFn (), HashFn h = HashFn ())
+              EqFn e = EqFn (), HashFn h = HashFn ())
     {
       this->_Init (size, ldf, e, h);
     }
 
-  template <class Iter>
+  template <typename Iter>
   hash_table (Iter first, Iter last, float ldf = 0.85f,
-      EqFn e = EqFn (), HashFn h = HashFn ())
+              EqFn e = EqFn (), HashFn h = HashFn ())
     {
       this->_Init (0, ldf, e, h);
       for (; first != last; ++first)
@@ -262,7 +301,7 @@ struct hash_table
     }
 
   hash_table (std::initializer_list<std::pair<KeyT, ValT> > lst,
-      float ldf = 0.85f, EqFn e = EqFn (), HashFn h = HashFn ()) :
+              float ldf = 0.85f, EqFn e = EqFn (), HashFn h = HashFn ()) :
       hash_table (lst.begin (), lst.end (), ldf, e, h)
     {
     }
@@ -301,8 +340,8 @@ struct hash_table
       return (this->size () == 0);
     }
 
-  size_t _Probe (const KeyT& key, const detail::ht_vector *vp,
-      bool put_p, bool& found) const
+  size_t _Probe (const KeyT& key, const detail::ht_vector<Nalloc> *vp,
+                 bool put_p, bool& found) const
     {
       size_t code = this->hashfn (key);
       size_t entries = vp->entries;
@@ -337,13 +376,14 @@ struct hash_table
         }
     }
 
-  size_t _Probe (const KeyT& key, const detail::ht_vector *vp, bool put_p) const
+  size_t _Probe (const KeyT& key, const detail::ht_vector<Nalloc> *vp,
+                 bool put_p) const
     {
       bool unused;
       return (this->_Probe (key, vp, put_p, unused));
     }
 
-  size_t _Gprobe (uintptr_t key, detail::ht_vector *vp)
+  size_t _Gprobe (uintptr_t key, detail::ht_vector<Nalloc> *vp)
     {
       size_t code = this->hashfn (key_traits::get (key));
       size_t entries = vp->entries;
@@ -366,14 +406,15 @@ struct hash_table
 
   void _Rehash ()
     {
-      detail::ht_sentry s (&this->lock, val_traits::XBIT);
+      detail::ht_sentry<Nalloc> s (&this->lock, val_traits::XBIT);
 
       if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
         {
           auto old = this->vec;
-          auto np = detail::make_htvec (old->pidx + 1,
-              key_traits::FREE, val_traits::FREE);
           size_t nelem = 0;
+          auto np = detail::ht_vector<Nalloc>::make (old->pidx + 1,
+                                                     key_traits::FREE,
+                                                     val_traits::FREE);
 
           s.vector = old;
 
@@ -399,9 +440,11 @@ struct hash_table
                                   nelem, std::memory_order_relaxed);
           std::atomic_thread_fence (std::memory_order_release);
 
-          /* At this point, another thread may decrement the growth limit
+          /*
+           * At this point, another thread may decrement the growth limit
            * from the wrong vector. That's fine, it just means we'll move
-           * the table sooner than necessary. */
+           * the table sooner than necessary.
+           */
           this->vec = np;
           finalize (old);
         }
@@ -415,12 +458,13 @@ struct hash_table
         vp->data[idx + 1] & ~val_traits::XBIT);
     }
 
-  optional<ValT> find (const KeyT& key) const
+  std::optional<ValT> find (const KeyT& key) const
     {
       cs_guard g;
       uintptr_t val = this->_Find (key);
-      return (val == val_traits::DELT ? optional<ValT> () :
-        optional<ValT> (val_traits::get (val)));
+      return (val == val_traits::DELT ?
+              std::optional<ValT> () :
+              std::optional<ValT> (val_traits::get (val)));
     }
 
   ValT find (const KeyT& key, const ValT& dfl) const
@@ -443,15 +487,16 @@ struct hash_table
           auto limit = this->grow_limit.load (std::memory_order_relaxed);
           if (limit <= 0)
             return (false);
-          else if (this->grow_limit.compare_exchange_weak (limit, limit - 1,
-              std::memory_order_acq_rel, std::memory_order_relaxed))
+          else if (this->grow_limit.compare_exchange_weak (
+                limit, limit - 1, std::memory_order_acq_rel,
+                std::memory_order_relaxed))
             return (true);
 
           xatomic_spin_nop ();
         }
     }
 
-  template <class Fn, class ...Args>
+  template <typename Fn, typename ...Args>
   bool _Upsert (uintptr_t k, const KeyT& key, Fn f, Args... args)
     {
       cs_guard g;
@@ -533,14 +578,14 @@ struct hash_table
         }
     }
 
-  template <class Fn, class Vtraits>
+  template <typename Fn, typename Vtraits>
   struct _Updater
     {
       Fn fct;
 
       _Updater (Fn f) : fct (f) {}
 
-      template <class ...Args>
+      template <typename ...Args>
       uintptr_t call0 (Args ...args)
         { // Call function with default-constructed value and arguments.
           auto tmp = (typename Vtraits::value_type ());
@@ -548,13 +593,13 @@ struct hash_table
           return (Vtraits::make (rv));
         }
 
-      template <class ...Args>
+      template <typename ...Args>
       uintptr_t call1 (uintptr_t x, Args ...args)
         { // Call function with stored value and arguments.
           auto&& tmp = Vtraits::get (x);
           auto&& rv = this->fct (tmp, args...);
-          return (Vtraits::XBIT == 1 &&
-            &rv == &tmp ? x : Vtraits::make (rv));
+          return (Vtraits::XBIT == 1 && &rv == &tmp ?
+                  x : Vtraits::make (rv));
         }
 
       void free (uintptr_t x)
@@ -563,7 +608,7 @@ struct hash_table
         }
     };
 
-  template <class Fn, class ...Args>
+  template <typename Fn, typename ...Args>
   bool update (const KeyT& key, Fn f, Args... args)
     {
       uintptr_t k = key_traits::make (key);
@@ -580,7 +625,7 @@ struct hash_table
         }
     }
 
-  bool _Erase (const KeyT& key, optional<ValT> *outp = nullptr)
+  bool _Erase (const KeyT& key, std::optional<ValT> *outp = nullptr)
     {
       cs_guard g;
 
@@ -626,16 +671,16 @@ struct hash_table
       return (this->_Erase (key));
     }
 
-  optional<ValT> remove (const KeyT& key)
+  std::optional<ValT> remove (const KeyT& key)
     {
-      optional<ValT> ret;
+      std::optional<ValT> ret;
       this->_Erase (key, &ret);
       return (ret);
     }
 
-  struct iterator : public detail::ht_iter<key_traits, val_traits>
+  struct iterator : public detail::ht_iter<key_traits, val_traits, Nalloc>
     {
-      typedef detail::ht_iter<key_traits, val_traits> base_type;
+      typedef detail::ht_iter<key_traits, val_traits, Nalloc> base_type;
 
       iterator () : base_type ()
         {
@@ -705,7 +750,7 @@ struct hash_table
       return (this->end ());
     }
 
-  void _Assign_vector (detail::ht_vector *nv, intptr_t gt)
+  void _Assign_vector (detail::ht_vector<Nalloc> *nv, intptr_t gt)
     {
       // First step: Lock the table.
       this->lock.acquire ();
@@ -751,22 +796,23 @@ struct hash_table
             val_traits::destroy (v);
         }
 
-      this->grow_limit.store ((intptr_t)(this->loadf * this->size ()),
+      this->grow_limit.store (detail::compute_fsize (this->loadf,
+                                                     this->size ()),
                               std::memory_order_relaxed);
       this->vec->nelems.store (0, std::memory_order_release);
       this->lock.release ();
     }
 
-  template <class Iter>
+  template <typename Iter>
   void assign (Iter first, Iter last)
     {
       self_type tmp (first, last, 0, this->loadf);
       this->_Assign_vector (tmp.vec,
-        tmp.grow_limit.load (std::memory_order_relaxed));
+                            tmp.grow_limit.load (std::memory_order_relaxed));
       tmp.vec = nullptr;
     }
 
-  void assign (std::initializer_list<std::pair<KeyT, ValT> > lst)
+  void assign (std::initializer_list<std::pair<KeyT, ValT>> lst)
     {
       this->assign (lst.begin (), lst.end ());
     }
@@ -780,7 +826,7 @@ struct hash_table
   self_type& operator= (self_type&& right)
     {
       this->_Assign_vector (right.vec,
-        right.grow_limit.load (std::memory_order_relaxed));
+                            right.grow_limit.load (std::memory_order_relaxed));
       this->loadf = right.loadf;
       right.vec = nullptr;
       return (*this);
@@ -791,8 +837,8 @@ struct hash_table
       if (this == &right)
         return;
 
-      detail::ht_sentry s1 (&this->lock, ~val_traits::XBIT);
-      detail::ht_sentry s2 (&right.lock, ~val_traits::XBIT);
+      detail::ht_sentry<Nalloc> s1 (&this->lock, ~val_traits::XBIT);
+      detail::ht_sentry<Nalloc> s2 (&right.lock, ~val_traits::XBIT);
 
       // Prevent further insertions (still allows deletions).
       this->grow_limit.store (0, std::memory_order_release);
@@ -803,10 +849,12 @@ struct hash_table
       std::swap (this->hashfn, right.hashfn);
       std::swap (this->loadf, right.loadf);
 
-      this->grow_limit.store ((intptr_t)(this->loadf *
-        this->vec->entries) - this->size (), std::memory_order_release);
-      right.grow_limit.store ((intptr_t)(right.loadf *
-        right.vec->entries) - right.size (), std::memory_order_release);
+      this->grow_limit.store (detail::compute_fsize (this->loadf,
+                                                     this->vec->entries),
+                              std::memory_order_release);
+      right.grow_limit.store (detail::compute_fsize (right.loadf,
+                                                     right.vec->entries),
+                              std::memory_order_release);
     }
 
   ~hash_table ()
@@ -834,7 +882,7 @@ struct hash_table
 namespace std
 {
 
-template <class KeyT, class ValT, class EqFn, class HashFn>
+template <typename KeyT, typename ValT, typename EqFn, typename HashFn>
 void swap (xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& left,
            xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& right)
 {

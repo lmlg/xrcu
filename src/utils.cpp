@@ -1,4 +1,4 @@
-/* Definitions for the skip list template type.
+/* Definitions for miscelaneous utilities.
 
    This file is part of xrcu.
 
@@ -15,8 +15,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
-#include "skip_list.hpp"
-#include <cstring>
+#include "xrcu/utils.hpp"
 #include <new>
 
 namespace xrcu
@@ -25,15 +24,12 @@ namespace xrcu
 namespace detail
 {
 
-sl_node_base* sl_alloc_node (unsigned int lvl, size_t size, uintptr_t **outpp)
+void* alloc_wrapped (size_t size)
 {
-  void *p = ::operator new (size + lvl * sizeof (uintptr_t));
-  *outpp = (uintptr_t *)((char *)p + size);
-  memset (*outpp, 0, lvl * sizeof (uintptr_t));
-  return ((sl_node_base *)p);
+  return (::operator new (size));
 }
 
-void sl_dealloc_node (void *ptr)
+void dealloc_wrapped (void *ptr)
 {
   ::operator delete (ptr);
 }

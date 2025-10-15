@@ -262,126 +262,6 @@ The overhead associated to C<sync> is the main reason why critical sections
 should be short, and also why C<finalizable> objects are accumulated instead of
 being reclaimed right away.
 
-=head2 Interlude: optionals
-
-    #include <xrcu/optional.hpp>
-
-Before moving on to the topic of containers, we need to take a look at an
-auxiliary structure implemented to make things easier and more convenient
-for users. This is the C<optional> type.
-
-An optional is a template type that can hold either an object of type I<T>, or
-be in an uninitialized state. In other words, the value may or may not be
-present. Unlike the usage of a pointer which may be null, an C<optional> never
-performs dynamic memory allocation, as the space required to hold the value is
-always there, even if it's not being used.
-
-Optional types have been standardized in C++17, and are present in many other
-libraries as well. However, since XRCU aims to work with the base minimum of
-C++11 compliant compilers, and because it's designed not to depend on other
-libraries or frameworks, it contains its own (lightweight) implementation.
-
-=head3 Optional API
-
-An optional is defined as such:
-
-    template <class T>
-    struct optional
-      {
-      };
-
-And its public interface is the following:
-
-=over 4
-
-=item optional ();
-
-Default constructor. Initializes the optional without a value.
-
-=item optional (const T& value);
-
-Initializes the optional to contain C<value>.
-
-=item optional (const optional<T>& other);
-
-Copy constructor. If C<other> has a value, then it initializes the optional to
-contain that same value. Otherwise, the optional will contain no value.
-
-=item optional (T&& value);
-
-Move constructor. Initializes the optional by taking ownership of C<value>.
-
-=item optional (optional<T>&& other);
-
-Move constructor. If C<other> has a value, then the optional is initialized
-by taking ownership of it. Otherwise, the optional will have no value.
-
-=item T& operator* ();
-
-=item const T& operator* () const;
-
-Returns a (possibly const) reference to the optional's value. The results are
-undefined if the optional does not contain one.
-
-=item T* operator-> ();
-
-=item const T* operator-> () const;
-
-Returns a (possibly const) pointer to the optional's value. The results are
-undefined if the optional does not contain one.
-
-=item bool has_value () const;
-
-Returns true if the optional has a value.
-
-=item void reset () const;
-
-If the optional contains a value, call its destructor and make the optional
-contain no value afterwards. Otherwise, there are no effects.
-
-=item optional& operator= (const optional<T>& other);
-
-If C<other> has a value, assigns it to the optional. Otherwise, calls C<reset>
-on the optional and leaves it without a value. Returns C<*this>.
-
-=item optional& operator= (const T& value);
-
-Assigns C<value> to the optional. Returns C<*this>.
-
-=item optional& operator= (optional<T>&& other);
-
-If C<other> has a value, assigns it to the optional by moving it. Otherwise,
-calls C<reset> on the optional and leaves it without a value. Returns C<*this>.
-
-=item optional& operator= (T&& value);
-
-Assigns C<value> to the optional by moving it. Returns C<*this>.
-
-=item ~optional ();
-
-Destroys the value associated to the optional, if it had any.
-
-=back
-
-=head3 Implementation details
-
-Optionals are rather simple: They are implemented by using a flat buffer
-on which placement new is called. Once an object has been constructed,
-a pointer is cached for the buffer. This pointer will be used when fetching
-the value, or destroying the object (it's null for empty optionals).
-
-Optionals are very useful when performing lookups in mapped containers, since
-they allow us to bypass the need of additional output parameters to determine
-if a search was successful in an atomic way.
-
-Another reason as to why optional values are used so extensively in XRCU is
-because we consider them to be the best way to signal both a valid object,
-as well as an error. When using lock-less data structures, it's impossible to
-determine beforehand whether an error will occur when calling a method (because
-multithreading makes things non deterministic). Throwing an exception was
-considered a bit too "punishing" - it's not precisely a programming error,
-after all.
-
 =head2 Stacks
 
   #include <xrcu/stack.hpp>
@@ -397,7 +277,7 @@ In XRCU, stacks meet the requirements for the C++ concept of I<Container>.
 
 Stacks are templated types that can be instantiated with a type T:
 
-  template <class T>
+  template <typename T, typename Alloc = std::allocator<T>>
   struct stack
     {
       typedef T value_type;
@@ -426,11 +306,11 @@ The following describes the public interface for C<stack<TE<gt>>
 
 Default constructor. Initializes a stack to be empty.
 
-=item template <class Integer> stack (Integer n, T value);
+=item template <typename Integer> stack (Integer n, T value);
 
 Initializes a stack to contain C<n> times C<value>.
 
-=item template <class Iter> stack (Iter first, Iter last);
+=item template <typename Iter> stack (Iter first, Iter last);
 
 Initializes a stack with the values in the range [C<first>, C<last>)
 
@@ -450,25 +330,25 @@ Move constructor. Takes ownership of the values in C<other>.
 
 Pushes C<value> to the top of the stack.
 
-=item template <class Iter> void push (Iter first, Iter last)
+=item template <typename Iter> void push (Iter first, Iter last)
 
 Pushes the values in the range [C<first>, C<last>) to the stack.
 
-=item template <class Integer> void push (Integer n, T value)
+=item template <typename Integer> void push (Integer n, T value)
 
 Pushes C<n> times C<value> to the stack.
 
-=item template<class ...Args> void emplace (Args&& ...args)
+=item template<typename ...Args> void emplace (Args&& ...args)
 
 Same as C<push>, only it constructs a new item by calling the move
 constructor with C<args...>.
 
-=item optional<T> pop ();
+=item std::optional<T> pop ();
 
 Removes the item at the top of the stack, and returns an optional with that
 value. If the stack is empty, the method returns an optional with no value.
 
-=item optional<T> top ();
+=item std::optional<T> top ();
 
 Fetches the current item at the top of the stack, and returns an optional
 with it as its value. If the stack is empty, returns an optional with no value.
@@ -485,36 +365,36 @@ Returns the maximum allowed size for the stack.
 
 Returns true if the stack is empty (equivalent to C<size () == 0>).
 
-=item void swap (stack<T>& other);
+=item void swap (stack<T, Alloc>& other);
 
 Swaps the contents of the stack with C<other>, but only if C<other> is not the
 same object.
 
-=item stack<T>& operator= (const stack<T>& other);
+=item stack& operator= (const stack& other);
 
 Assigns the contents of C<other> to the stack and returns C<*this>.
 
-=item stack<T>& operator= (stack<T>&& other);
+=item stack& operator= (stack&& other);
 
 Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
 
-=item bool operator== (const stack<T>& other) const;
+=item bool operator== (const stack& other) const;
 
 Compares the elements of the stack with the ones in C<other>. Returns true
 if they are all equal.
 
-=item bool operator!= (const stack<T>& other) const;
+=item bool operator!= (const stack& other) const;
 
 Compares the elements of the stack with the ones in C<other>. Returns true
 if any two of them are not equal.
 
-=item bool operator<  (const stack<T>& other) const;
+=item bool operator<  (const stack& other) const;
 
-=item bool operator>  (const stack<T>& other) const;
+=item bool operator>  (const stack& other) const;
 
-=item bool operator<= (const stack<T>& other) const;
+=item bool operator<= (const stack& other) const;
 
-=item bool operator>= (const stack<T>& other) const;
+=item bool operator>= (const stack& other) const;
 
 Lexicographically compares the elements of the stack with the ones in C<other>,
 in a way that is equivalent to calling C<std::lexicographical_compare>.
@@ -523,7 +403,7 @@ in a way that is equivalent to calling C<std::lexicographical_compare>.
 
 Removes every element from the stack.
 
-=item template <class T1, class T2> void assign (T1 x, T2 y);
+=item template <typename T1, typename T2> void assign (T1 x, T2 y);
 
 Assigns to the stack the elements described by (C<x>, C<y>). They could be an
 iterator range, or a pair of (integer, value), as is the case with the stack's
@@ -620,7 +500,7 @@ In XRCU, queues meet the requirements for the C++ concept of I<Container>.
 
 Queues are templated types, and they may be instantiated with a type T:
 
-  template <class T>
+  template <typename T, typename Alloc = std::allocator<T>>
   struct queue
     {
       typedef T value_type;
@@ -647,11 +527,11 @@ The following describes the public interface for C<queue<TE<gt>>
 
 Default constructor. Initializes a queue to be empty.
 
-=item template <class Integer> queue (Integer n, T value);
+=item template <typename Integer> queue (Integer n, T value);
 
 Initializes a queue to contain C<n> times C<value>.
 
-=item template <class Iter> queue (Iter first, Iter last);
+=item template <typename Iter> queue (Iter first, Iter last);
 
 Initializes a queue with the values in the range [C<first>, C<last>).
 
@@ -659,11 +539,11 @@ Initializes a queue with the values in the range [C<first>, C<last>).
 
 Initializes a queue with the values in C<lst>.
 
-=item queue (const queue<T>& other);
+=item queue (const queue& other);
 
 Copy constructor. Initializes a queue with the values in C<other>.
 
-=item queue (queue<T>&& other);
+=item queue (queue&& other);
 
 Move constructor. Takes ownership of the values in C<other>.
 
@@ -671,22 +551,22 @@ Move constructor. Takes ownership of the values in C<other>.
 
 Pushes C<value> to the top of the queue.
 
-=item template <class ...Args> void emplace (Args&& ...args)
+=item template <typename ...Args> void emplace (Args&& ...args)
 
 Same as C<push>, only the new item is constructed by calling the move
 constructor with C<args...>.
 
-=item optional<T> pop ();
+=item std::optional<T> pop ();
 
 Removes the first item from the queue, and returns an optional with that value.
 If the queue is empty, the method returns an optional with no value.
 
-=item optional<T> front () const;
+=item std::optional<T> front () const;
 
 Returns an optional with the first value from the queue. If the queue is empty,
 an optional with no value is returned instead.
 
-=item optional<T> back () const;
+=item std::optional<T> back () const;
 
 Returns an optional with the last value from the queue. If the queue is empty,
 an optional with no value is returned instead.
@@ -699,36 +579,36 @@ Returns the size of the queue.
 
 Returns the maximum allowed size for the queue.
 
-=item void swap (queue<T>& other);
+=item void swap (queue& other);
 
 Swaps the contents of the queue with C<other>, but only if C<other> is not
 the same object.
 
-=item queue<T>& operator= (const queue<T>& other);
+=item queue& operator= (const queue& other);
 
 Assigns the contents of C<other> to the queue and returns C<*this>.
 
-=item queue<T>& operator= (queue<T>&& other);
+=item queue& operator= (queue&& other);
 
 Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
 
-=item bool operator== (const queue<T>& other);
+=item bool operator== (const queue& other);
 
 Compares the elements of the queue with the ones in C<other>. Returns true
 if they are all equal.
 
-=item bool operator!= (const queue<T>& other);
+=item bool operator!= (const queue& other);
 
 Compares the elements of the queue with the ones in C<other>. Returns true
 if any two of them are not equal.
 
-=item bool operator<  (const queue<T>& other) const;
+=item bool operator<  (const queue& other) const;
 
-=item bool operator>  (const queue<T>& other) const;
+=item bool operator>  (const queue& other) const;
 
-=item bool operator<= (const queue<T>& other) const;
+=item bool operator<= (const queue& other) const;
 
-=item bool operator>= (const queue<T>& other) const;
+=item bool operator>= (const queue& other) const;
 
 Lexicographically compares the elements of the queue with the ones in C<other>,
 in a way that is equivalent to calling C<std::lexicographical_compare>.
@@ -737,7 +617,7 @@ in a way that is equivalent to calling C<std::lexicographical_compare>.
 
 Removes every element from the queue.
 
-=item template <class T1, class T2> void assign (T1 x, T2 y);
+=item template <typename T1, typename T2> void assign (T1 x, T2 y);
 
 Assigns to the queue the elements described by (C<x>, C<y>). They can be an
 iterator range or a pair of (integer, value), as is the case with the queue's
@@ -834,7 +714,8 @@ and I<AssociativeContainer>.
 
 Skip lists are templated types, defined in the following way:
 
-    template <class T, class Cmp = std::less<T> >
+    template <typename T, typename Cmp = std::less<T>,
+              typename Alloc = std::allocator<T>>
     struct skip_list
       {
         typedef T value_type;
@@ -874,7 +755,7 @@ shouldn't need to change the latter, but it can be useful when tuning the
 application for performance. As a general rule, a higher value implies more
 memory usage, but better performance.
 
-=item template <class Iter> skip_list (Iter first, Iter last, Cmp c = Cmp (), unsigned int depth = ...);
+=item template <typename Iter> skip_list (Iter first, Iter last, Cmp c = Cmp (), unsigned int depth = ...);
 
 Initializes the skip list to the values in [C<first>, C<last>). The comparator
 and depth parameters are the same as explained above.
@@ -884,15 +765,15 @@ and depth parameters are the same as explained above.
 Initializes the skip list to the values in C<lst>. The comparator and depth
 parameters are the same as explained above.
 
-=item skip_list (const skip_list<T, Cmp>& other);
+=item skip_list (const skip_list& other);
 
 Copy constructor. Initializes the skip list to hold the values in C<other>.
 
-=item skip_list (skip_list<T, Cmp>&& other);
+=item skip_list (skip_list&& other);
 
 Move constructor. Takes ownership of the values in C<other>.
 
-=item optional<T> find (const T& key) const;
+=item std::optional<T> find (const T& key) const;
 
 Searches for an element equivalent to C<key> in the skip list, and returns an
 optional with it as its value. If the key couldn't be found, the returned
@@ -912,7 +793,7 @@ previous to this call.
 Erases C<key> from the skip list. Returns true if the key was present previous
 to this call.
 
-=item optional<T> remove (const T& key);
+=item std::optional<T> remove (const T& key);
 
 Erases C<key> from the skip list and returns an optional with that element as
 its value, if the key was present. Otherwise, the returned optional has no
@@ -942,7 +823,7 @@ Returns the maximum allowed size for a skip list.
 
 Returns true if the skip list is empty (i.e: its size is 0).
 
-=item template <class Iter> void assign (Iter first, Iter last);
+=item template <typename Iter> void assign (Iter first, Iter last);
 
 Assigns to the skip list the elements in [C<first>, C<last>).
 
@@ -950,15 +831,15 @@ Assigns to the skip list the elements in [C<first>, C<last>).
 
 Assigns to the skip list the elements in C<lst>.
 
-=item skip_list& operator= (const skip_list<T, Cmp>& other);
+=item skip_list& operator= (const skip_list& other);
 
 Assigns the elements in C<other> to the skip list. Returns C<*this>.
 
-=item skip_list& operator= (skip_list<T, Cmp>&& other);
+=item skip_list& operator= (skip_list&& other);
 
 Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
 
-=item void swap (skip_list<T, Cmp>& other);
+=item void swap (skip_list& other);
 
 Swaps the contents of the skip list with C<other>, but only if C<other> is a
 different object.
@@ -1016,9 +897,10 @@ and I<UnorderedAssociativeContainer>.
 
 As mentioned above, hash tables are template types, defined like this:
 
-    template <class Key, class Val,
-              class Equal = std::equal<Key>,
-              class Hash = std::hash<Key> >
+    template <typename Key, typename Val,
+              typename Equal = std::equal<Key>,
+              typename Hash = std::hash<Key>,
+              typename Alloc = std::allocator<std::pair<Key, Val>>>
     struct hash_table
       {
         typedef Val mapped_type;
@@ -1057,7 +939,7 @@ C<lf>, using the equality predicate C<e> and the hasher C<h>. The load factor
 must be in the range [0.4, 0.9]; if it's not, then it will silently be set to
 the default of 0.85.
 
-=item template <class It> hash_table (It first, It last, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
+=item template <typename It> hash_table (It first, It last, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
 
 Initializes the hash table with the values between (C<first>, C<last>]. The
 elements in that range must have two public members defined: C<first> and
@@ -1065,16 +947,16 @@ C<second>, referring to the key and value of each element, respectively, and
 in a similar fashion to what C<std::pair> does. The other parameters work as
 with the previous constructor.
 
-=item hash_table (std::initializer_list<std::pair<Key, Val> >, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
+=item hash_table (std::initializer_list<std::pair<Key, Val>>, float lf = 0.85, Equal e = Equal (), Hash h = Hash ())
 
 Initializes the hash table with the values in C<lst>. The rest of the parameters
 work as with the previous constructors.
 
-=item hash_table (const hash_table<Key, Val, Hash, Equal>& other);
+=item hash_table (const hash_table& other);
 
 Copy constructor. Initializes the hash table with the values in C<other>.
 
-=item hash_table (hash_table<Key, Val, Hash, Equal>&& other);
+=item hash_table (hash_table&& other);
 
 Move constructor. Takes ownership of the values in C<other>.
 
@@ -1090,7 +972,7 @@ Returns the maximum allowed size for a hash table.
 
 Returns true if the hash table is empty.
 
-=item optional<Val> find (const Key& key) const;
+=item std::optional<Val> find (const Key& key) const;
 
 =item Val find (const Key& key, const Val& defl) const;
 
@@ -1107,7 +989,7 @@ Returns true if the key is present in the hash table.
 Associates C<key> with C<val> in the hash table. Returns true if the value was
 not present. Otherwise, the former value is replaced.
 
-=item template <class Fn, class ...Args> bool update (const Key& key, Fn f, Args... args);
+=item template <typename Fn, typename ...Args> bool update (const Key& key, Fn f, Args... args);
 
 Updates the value associated to C<key> by calling C<f> with it and the rest of
 the arguments. In other words, if C<val> is the value associated to C<key>,
@@ -1138,7 +1020,7 @@ to if, if it was present.
 
 Removes every element from the hash table.
 
-=item template <class Iter> void assign (Iter first, Iter last);
+=item template <typename Iter> void assign (Iter first, Iter last);
 
 Assigns the elements in [C<first>, C<last>) to the hash table. The same
 restrictions as the range constructor apply here.
@@ -1147,15 +1029,15 @@ restrictions as the range constructor apply here.
 
 Assigns the elements in C<lst> to the hash table.
 
-=item hash_table<Key, Val>& operator= (const hash_table<Key, Val>& other);
+=item hash_table& operator= (const hash_table& other);
 
 Assigns the elements in C<other> to the hash table. Returns C<*this>.
 
-=item hash_table<Key, Val>& operator= (hash_table<Key, Val>&& other);
+=item hash_table& operator= (hash_table&& other);
 
 Move assignment. Takes ownership of the elements in C<other>. Returns C<*this>.
 
-=item void swap (hash_table<Key, Val>& other);
+=item void swap (hash_table& other);
 
 Swaps the contents of the hash table with C<other>, but only if C<other> is a
 different object.
