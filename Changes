@@ -2,3 +2,6 @@ Revision history for XRCU
 
 0.1 19/03/2019
   - First public version
+
+0.2 15/10/2025
+  - Allow custom allocators for all containers
