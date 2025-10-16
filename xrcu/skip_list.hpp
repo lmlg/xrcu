@@ -305,7 +305,7 @@ struct skip_list
 
       const T& operator* () const
         {
-          return (skip_list<T, Cmp>::_Getk (this->node));
+          return (skip_list<T, Cmp, Alloc>::_Getk (this->node));
         }
 
       const T* operator-> () const
@@ -710,9 +710,9 @@ struct skip_list
 namespace std
 {
 
-template <typename T, typename Cmp>
-void swap (xrcu::skip_list<T, Cmp>& left,
-           xrcu::skip_list<T, Cmp>& right)
+template <typename T, typename Cmp, typename Alloc>
+void swap (xrcu::skip_list<T, Cmp, Alloc>& left,
+           xrcu::skip_list<T, Cmp, Alloc>& right)
 {
   left.swap (right);
 }

@@ -882,9 +882,10 @@ struct hash_table
 namespace std
 {
 
-template <typename KeyT, typename ValT, typename EqFn, typename HashFn>
-void swap (xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& left,
-           xrcu::hash_table<KeyT, ValT, EqFn, HashFn>& right)
+template <typename KeyT, typename ValT, typename EqFn,
+          typename HashFn, typename Alloc>
+void swap (xrcu::hash_table<KeyT, ValT, EqFn, HashFn, Alloc>& left,
+           xrcu::hash_table<KeyT, ValT, EqFn, HashFn, Alloc>& right)
 {
   left.swap (right);
 }
