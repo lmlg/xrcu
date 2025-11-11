@@ -857,6 +857,21 @@ struct hash_table
                               std::memory_order_release);
     }
 
+  template <typename K2, typename V2, typename E2,
+            typename H2, typename A2>
+  bool operator== (const hash_table<K2, V2, E2, H2, A2>& right) const
+    {
+      return (detail::sequence_eq (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
+    }
+
+  template <typename K2, typename V2, typename E2,
+            typename H2, typename A2>
+  bool operator!= (const hash_table<K2, V2, E2, H2, A2>& right) const
+    {
+      return (!(*this == right));
+    }
+
   ~hash_table ()
     {
       if (!this->vec)

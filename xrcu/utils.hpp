@@ -161,6 +161,30 @@ struct wrapped_traits<false, T, Alloc>
     }
 };
 
+template <typename I1, typename I2>
+bool sequence_lt (I1 x1, I1 x2, I2 y1, I2 y2)
+{
+  for (; x1 != x2; ++x1, ++y1)
+    {
+      if (y1 == y2 || *y1 < *x1)
+        return (false);
+      else if (*x1 < *y1)
+        return (true);
+    }
+
+  return (y1 != y2);
+}
+
+template <typename I1, typename I2>
+bool sequence_eq (I1 x1, I1 x2, I2 y1, I2 y2)
+{
+  for (; x1 != x2 && y1 != y2; ++x1, ++y1)
+    if (*x1 != *y1)
+      return (false);
+
+  return (x1 == x2 && y1 == y2);
+}
+
 } // namespace detail
 
 } // namespace xrcu

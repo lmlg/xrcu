@@ -18,7 +18,9 @@
 #ifndef __XRCU_STACK_HPP__
 #define __XRCU_STACK_HPP__   1
 
+#include "utils.hpp"
 #include "xrcu.hpp"
+
 #include <atomic>
 #include <cstddef>
 #include <initializer_list>
@@ -490,50 +492,40 @@ struct stack
       return (*this);
     }
 
-  bool operator== (const stack<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator== (const stack<T2, A2>& right) const
     {
-      auto x1 = this->cbegin (), x2 = this->cend ();
-      auto y1 = right.cbegin (), y2 = right.cend ();
-
-      for (; x1 != x2 && y1 != y2; ++x1, ++y1)
-        if (*x1 != *y1)
-          return (false);
-
-      return (x1 == x2 && y1 == y2);
+      return (detail::sequence_eq (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
     }
 
-  bool operator!= (const stack<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator!= (const stack<T2, A2>& right) const
     {
       return (!(*this == right));
     }
 
-  bool operator< (const stack<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator< (const stack<T2, A2>& right) const
     {
-      auto x1 = this->cbegin (), x2 = this->cend ();
-      auto y1 = right.cbegin (), y2 = right.cend ();
-
-      for (; x1 != x2; ++x1, ++y1)
-        {
-          if (y1 == y2 || *y1 < *x1)
-            return (false);
-          else if (*x1 < *y1)
-            return (true);
-        }
-
-      return (y1 != y2);
+      return (detail::sequence_lt (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
     }
 
-  bool operator> (const stack<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator> (const stack<T2, A2>& right) const
     {
       return (right < *this);
     }
 
-  bool operator<= (const stack<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator<= (const stack<T2, A2>& right) const
     {
       return (!(right < *this));
     }
 
-  bool operator>= (const stack<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator>= (const stack<T2, A2>& right) const
     {
       return (!(*this < right));
     }

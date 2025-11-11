@@ -572,50 +572,40 @@ struct queue
       return (*this);
     }
 
-  bool operator== (const queue<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator== (const queue<T2, A2>& right) const
     {
-      auto x1 = this->cbegin (), x2 = this->cend ();
-      auto y1 = right.cbegin (), y2 = right.cend ();
-
-      for (; x1 != x2 && y1 != y2; ++x1, ++y1)
-        if (*x1 != *y1)
-          return (false);
-
-      return (x1 == x2 && y1 == y2);
+      return (detail::sequence_eq (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
     }
 
-  bool operator!= (const queue<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator!= (const queue<T2, A2>& right) const
     {
       return (!(*this == right));
     }
 
-  bool operator< (const queue<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator< (const queue<T2, A2>& right) const
     {
-      auto x1 = this->cbegin (), x2 = this->cend ();
-      auto y1 = right.cbegin (), y2 = right.cend ();
-
-      for (; x1 != x2; ++x1, ++y1)
-        {
-          if (y1 == y2 || *y1 < *x1)
-            return (false);
-          else if (*x1 < *y1)
-            return (true);
-        }
-
-      return (y1 != y2);
+      return (detail::sequence_lt (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
     }
 
-  bool operator> (const queue<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator> (const queue<T2, A2>& right) const
     {
       return (right < *this);
     }
 
-  bool operator<= (const queue<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator<= (const queue<T2, A2>& right) const
     {
       return (!(right < *this));
     }
 
-  bool operator>= (const queue<T, Alloc>& right) const
+  template <typename T2, typename A2>
+  bool operator>= (const queue<T2, A2>& right) const
     {
       return (!(*this < right));
     }
