@@ -113,13 +113,7 @@ struct registry
       this->root.init_head ();
     }
 
-  void add_tdata (td_link *lp)
-    {
-      tl_set (lp);
-      this->td_mtx.lock ();
-      lp->add (&this->root);
-      this->td_mtx.unlock ();
-    }
+  void add_tdata (td_link *lp);
 
   uintptr_t get_ctr () const
     {
@@ -147,6 +141,12 @@ struct tl_data : public td_link
   std::atomic_uintptr_t counter;
   size_t xrand_val;
   finalizable *fin_objs;
+  finalizable **finpp;
+
+  void init ()
+    {
+      this->finpp = &this->fin_objs;
+    }
 
   uintptr_t get_ctr () const
     {
@@ -189,8 +189,8 @@ struct tl_data : public td_link
 
   void finalize (finalizable *finp)
     {
-      finp->_Fin_next = this->fin_objs;
-      this->fin_objs = finp;
+      *this->finpp = finp;
+      this->finpp = &finp->_Fin_next;
 
       if (++this->n_fins < MAX_FINS)
         ;
@@ -217,6 +217,15 @@ struct tl_data : public td_link
       global_reg.td_mtx.unlock ();
     }
 };
+
+void registry::add_tdata (td_link *lp)
+{
+  tl_set (lp);
+  this->td_mtx.lock ();
+  lp->add (&this->root);
+  ((tl_data *)lp)->init ();
+  this->td_mtx.unlock ();
+}
 
 #if defined (__MINGW32__) || defined (__MINGW64__)
 

@@ -19,6 +19,26 @@ struct tst_fin : public xrcu::finalizable
     }
 };
 
+struct fin1 : public xrcu::finalizable
+{
+  static bool done;
+
+  ~fin1 ()
+    {
+      fin1::done = true;
+    }
+};
+
+struct fin2 : public xrcu::finalizable
+{
+  ~fin2 ()
+    {
+      ASSERT (fin1::done);
+    }
+};
+
+bool fin1::done;
+
 void test_xrcu ()
 {
   xrcu::enter_cs ();
@@ -33,6 +53,13 @@ void test_xrcu ()
   ASSERT (G_CNT.load () == 0);
   xrcu::exit_cs ();
   ASSERT (G_CNT.load () == 1);
+}
+
+void test_xrcu_order ()
+{
+  xrcu::finalize (new fin1 ());
+  xrcu::finalize (new fin2 ());
+  xrcu::flush_finalizers ();
 }
 
 static void
