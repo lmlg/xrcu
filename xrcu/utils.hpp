@@ -21,6 +21,7 @@
 #include "xrcu.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 namespace xrcu
@@ -38,28 +39,65 @@ void destroy (void *ptr)
   ((T *)ptr)->~T ();
 }
 
-template <class T>
-struct alignas (8) type_wrapper : public finalizable
+template <typename T>
+struct alignas (8) type_wrapper_base : public finalizable
 {
   T value;
 
-  type_wrapper (const T& val) : value (val)
+  type_wrapper_base (const T& val) : value (val)
     {
     }
 
-  template <class ...Args>
-  type_wrapper (Args&&... args) : value (std::forward<Args>(args)...)
+  template <typename ...Args>
+  type_wrapper_base (Args&&... args) : value (std::forward<Args>(args)...)
     {
+    }
+};
+
+template <typename T, typename Alloc>
+struct alignas (8) type_wrapper : public type_wrapper_base<T>
+{
+  typedef type_wrapper<T, Alloc> Self;
+
+  type_wrapper (const T& v) : type_wrapper_base<T> (v)
+    {
+    }
+
+  template <typename ...Args>
+  type_wrapper (Args&&... args) :
+      type_wrapper_base<T> (std::forward<Args>(args)...)
+    {
+    }
+
+  static Self* make (const T& val)
+    {
+      auto ret = Alloc().allocate (1);
+      try
+        {
+          return (new (ret) Self (val));
+        }
+      catch (...)
+        {
+          Alloc().deallocate (ret, 1);
+          throw;
+        }
+    }
+
+  template <typename ...Args>
+  static Self* make (Args&&... args)
+    {
+      auto ret = Alloc().allocate (1);
+      return (new (ret) Self (std::forward<Args>(args)...));
     }
 
   void safe_destroy ()
     {
       destroy<T> (&this->value);
-      dealloc_wrapped (this);
+      Alloc().deallocate (this, 1);
     }
 };
 
-template <bool Integral, class T>
+template <bool Integral, typename T, typename Alloc>
 struct wrapped_traits
 {
   static const uintptr_t XBIT = (uintptr_t)1 << (sizeof (uintptr_t) * 8 - 1);
@@ -81,59 +119,30 @@ struct wrapped_traits
   static void free (uintptr_t) {}
 };
 
-template <class T>
-struct wrapped_traits<false, T>
+template <typename T, typename Alloc>
+struct wrapped_traits<false, T, Alloc>
 {
   static const uintptr_t XBIT = 1;
   static const uintptr_t FREE = 2;
   static const uintptr_t DELT = 4;
   typedef T value_type;
-  typedef type_wrapper<T> wrapped_type;
+
+  using Nalloc = typename std::allocator_traits<Alloc>::template
+                 rebind_alloc<type_wrapper_base<T>>;
+
+  typedef type_wrapper<T, Nalloc> wrapped_type;
+  static_assert (sizeof (wrapped_type) == sizeof (type_wrapper_base<T>),
+                 "invalid size for type wrappers");
 
   static uintptr_t make (const T& val)
     {
-      auto rv = (wrapped_type *)alloc_wrapped (sizeof (wrapped_type));
-      try
-        {
-          new (rv) wrapped_type (val);
-          return ((uintptr_t)rv);
-        }
-      catch (...)
-        {
-          dealloc_wrapped (rv);
-          throw;
-        }
+      return ((uintptr_t)(wrapped_type::make (val)));
     }
 
-  template <class ...Args>
+  template <typename ...Args>
   static uintptr_t make (Args&&... args)
     {
-      auto rv = (wrapped_type *)alloc_wrapped (sizeof (wrapped_type));
-      try
-        {
-          new (rv) wrapped_type (std::forward<Args>(args)...);
-          return ((uintptr_t)rv);
-        }
-      catch (...)
-        {
-          dealloc_wrapped (rv);
-          throw;
-        }
-    }
-
-  static uintptr_t make (T&& val)
-    {
-      auto rv = (wrapped_type *)alloc_wrapped (sizeof (wrapped_type));
-      try
-        {
-          new (rv) wrapped_type (std::forward<T&&> (val));
-          return ((uintptr_t)rv);
-        }
-      catch (...)
-        {
-          dealloc_wrapped (rv);
-          throw;
-        }
+      return ((uintptr_t)wrapped_type::make (std::forward<Args>(args)...));
     }
 
   static T& get (uintptr_t addr)

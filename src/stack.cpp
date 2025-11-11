@@ -52,7 +52,8 @@ void stack_node_base::push (ptr_type& head, stack_node_base *nodep)
       nodep->next = get_node (head);
       if (!node_spinning_p (nodep->next) &&
           head.compare_exchange_weak (nodep->next, nodep,
-            std::memory_order_acq_rel, std::memory_order_relaxed))
+                                      std::memory_order_acq_rel,
+                                      std::memory_order_relaxed))
         break;
 
       xatomic_spin_nop ();
@@ -69,7 +70,8 @@ void stack_node_base::push (ptr_type& head,
         {
           *outp = tmp;
           if (head.compare_exchange_weak (tmp, nodep,
-              std::memory_order_acq_rel, std::memory_order_relaxed))
+                                          std::memory_order_acq_rel,
+                                          std::memory_order_relaxed))
             break;
         }
 
@@ -103,10 +105,12 @@ set_spin (stack_node_base::ptr_type& head)
   while (true)
     {
       auto tmp = get_node (head);
-      if (!node_spinning_p (tmp) &&
-          head.compare_exchange_weak (tmp,
-            (stack_node_base *)((uintptr_t)tmp | SPIN_BIT),
-            std::memory_order_acq_rel, std::memory_order_relaxed))
+      if (node_spinning_p (tmp))
+        continue;
+
+      auto clr = (stack_node_base *)((uintptr_t)tmp | SPIN_BIT);
+      if (head.compare_exchange_weak (tmp, clr, std::memory_order_acq_rel,
+                                      std::memory_order_relaxed))
         return (tmp);
 
       xatomic_spin_nop ();

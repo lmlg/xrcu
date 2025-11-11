@@ -34,8 +34,7 @@ bool q_base::push (uintptr_t val, uintptr_t xbit, uintptr_t empty)
       uintptr_t xv = this->ptrs[curr];
       if ((xv & xbit) != 0)
         return (false);
-      else if (xv == empty &&
-          xatomic_cas_bool (&this->ptrs[curr], xv, val))
+      else if (xv == empty && xatomic_cas_bool (&this->ptrs[curr], xv, val))
         {
           this->wr_idx.fetch_add (1, std::memory_order_acq_rel);
           return (true);

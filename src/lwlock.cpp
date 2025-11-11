@@ -62,7 +62,7 @@ lwlock_acquire (uintptr_t *ptr)
         return;
 
       syscall (SYS_futex, futex_ptr<sizeof (int) < sizeof (void *)> (ptr),
-        (long)(FUTEX_WAIT | FUTEX_PRIVATE_FLAG), 2l, 0ul);
+               (long)(FUTEX_WAIT | FUTEX_PRIVATE_FLAG), 2l, 0ul);
     }
 }
 
@@ -71,7 +71,7 @@ lwlock_release (uintptr_t *ptr)
 {
   if (xrcu::xatomic_swap (ptr, 0) != 1)
     syscall (SYS_futex, futex_ptr<sizeof (int) < sizeof (void *)> (ptr),
-      (long)(FUTEX_WAKE | FUTEX_PRIVATE_FLAG), 1ul);
+             (long)(FUTEX_WAKE | FUTEX_PRIVATE_FLAG), 1ul);
 }
 
 #else

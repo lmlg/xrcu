@@ -46,8 +46,8 @@ struct stack_node_base
 
   static void push (ptr_type& head, stack_node_base *nodep);
 
-  static void push (ptr_type& head,
-    stack_node_base *nodep, stack_node_base **outp);
+  static void push (ptr_type& head, stack_node_base *nodep,
+                    stack_node_base **outp);
 
   static stack_node_base* pop (ptr_type& head);
 

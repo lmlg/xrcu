@@ -29,7 +29,6 @@ OBJS = $(S)/xrcu.o   \
        $(S)/queue.o   \
        $(S)/stack.o   \
        $(S)/lwlock.o   \
-       $(S)/utils.o
 
 LOBJS = $(OBJS:.o=.lo)
 

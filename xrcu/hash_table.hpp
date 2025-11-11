@@ -222,16 +222,16 @@ template <typename KeyT, typename ValT,
           typename Alloc = std::allocator<std::pair<KeyT, ValT>>>
 struct hash_table
 {
+  using Nalloc = typename std::allocator_traits<Alloc>::template
+                 rebind_alloc<uintptr_t>;
+
   typedef detail::wrapped_traits<(
       sizeof (KeyT) < sizeof (uintptr_t) &&
-      std::is_integral<KeyT>::value), KeyT> key_traits;
+      std::is_integral<KeyT>::value), KeyT, Alloc> key_traits;
 
   typedef detail::wrapped_traits<(
       sizeof (ValT) < sizeof (uintptr_t) &&
-      std::is_integral<ValT>::value), ValT> val_traits;
-
-  using Nalloc = typename std::allocator_traits<Alloc>::template
-                 rebind_alloc<uintptr_t>;
+      std::is_integral<ValT>::value), ValT, Alloc> val_traits;
 
   typedef hash_table<KeyT, ValT, EqFn, HashFn, Alloc> self_type;
   typedef KeyT key_type;

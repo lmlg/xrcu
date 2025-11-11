@@ -195,8 +195,10 @@ struct tl_data : public td_link
       if (++this->n_fins < MAX_FINS)
         ;
       else if (!this->flush_all ())
-        /* Couldn't reclaim memory since we are in a critical section.
-         * Set the flag to do it ASAP. */
+        /*
+         * Couldn't reclaim memory since we are in a critical section.
+         * Set the flag to do it ASAP.
+         */
         this->must_flush = true;
     }
 
@@ -389,8 +391,11 @@ unsigned int xrand ()
 {
   auto self = &tldata;   // Avoid local_data ()
   if (!self->xrand_val)
-    self->xrand_val = (unsigned int)(time (nullptr) ^
-      std::hash<std::thread::id>() (std::this_thread::get_id ()));
+    {
+      auto x1 = (unsigned int)(time (nullptr));
+      auto x2 = std::hash<std::thread::id> () (std::this_thread::get_id ());
+      self->xrand_val = x1 ^ x2;
+    }
 
   self->xrand_val = self->xrand_val * 1103515245 + 12345;
   return (self->xrand_val >> 16);

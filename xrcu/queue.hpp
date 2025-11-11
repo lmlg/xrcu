@@ -118,7 +118,9 @@ template <typename T, typename Alloc = std::allocator<T>>
 struct queue
 {
   typedef detail::wrapped_traits<(sizeof (T) < sizeof (uintptr_t) &&
-                                  std::is_integral<T>::value), T> val_traits;
+                                  std::is_integral<T>::value),
+                                  T, Alloc> val_traits;
+
   using Nalloc = typename std::allocator_traits<Alloc>::template
                           rebind_alloc<uintptr_t>;
 
