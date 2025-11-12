@@ -138,7 +138,7 @@ struct stack
       static _Stknode* move (Args... args)
         {
           auto ret = Nalloc().allocate (1);
-          new (ret) _Stknode (std::forward<Args&&>(args)...);
+          new (ret) _Stknode (std::forward<Args>(args)...);
           return (ret);
         }
 
@@ -331,7 +331,7 @@ struct stack
   template <typename...Args>
   void emplace (Args&& ...args)
     {
-      auto np = _Stknode::move (std::forward<Args&&>(args)...);
+      auto np = _Stknode::move (std::forward<Args>(args)...);
       detail::stack_node_base::push (this->hnode, np);
     }
 

@@ -131,7 +131,7 @@ struct sl_node : public sl_node_base<Alloc>
 
   template <typename ...Args>
   sl_node (unsigned int lvl, uintptr_t *np, Args... args) :
-      sl_node_base<Alloc> (lvl, np), key (std::forward<Args&&>(args)...)
+      sl_node_base<Alloc> (lvl, np), key (std::forward<Args>(args)...)
     {
     }
 
@@ -158,7 +158,7 @@ struct sl_node : public sl_node_base<Alloc>
       auto ret = (_Self *)alloc_uptrs<Alloc> (sizeof (_Self), lvl);
       uintptr_t *np = (uintptr_t *)(ret + 1);
       return (new (ret) sl_node<T, Alloc> (lvl, np,
-                                           std::forward<Args&&>(args)...));
+                                           std::forward<Args>(args)...));
     }
 
   void safe_destroy ()

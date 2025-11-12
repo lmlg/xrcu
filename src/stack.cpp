@@ -60,8 +60,8 @@ void stack_node_base::push (ptr_type& head, stack_node_base *nodep)
     }
 }
 
-void stack_node_base::push (ptr_type& head,
-  stack_node_base *nodep, stack_node_base **outp)
+void stack_node_base::push (ptr_type& head, stack_node_base *nodep,
+                            stack_node_base **outp)
 {
   while (true)
     {
