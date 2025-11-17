@@ -41,53 +41,41 @@ namespace xrcu
 namespace detail
 {
 
-static const uintptr_t SL_XBIT = 1;
-static const unsigned int SL_MAX_DEPTH = 24;
+static constexpr uintptr_t SL_XBIT = 1;
+static constexpr unsigned int SL_MAX_DEPTH = 24;
 
-static const int SL_UNLINK_SKIP = -1;
-static const int SL_UNLINK_NONE = 0;
-static const int SL_UNLINK_ASSIST = 1;
-static const int SL_UNLINK_FORCE = 2;
+static constexpr int SL_UNLINK_SKIP = -1;
+static constexpr int SL_UNLINK_NONE = 0;
+static constexpr int SL_UNLINK_ASSIST = 1;
+static constexpr int SL_UNLINK_FORCE = 2;
 
-template <typename Alloc>
-struct alignas (uintptr_t) sl_node_base : public finalizable
+struct alignas (uintptr_t) sl_node_impl : public finalizable
 {
   unsigned int nlvl;
   uintptr_t *next;
 
-  sl_node_base (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np)
+  sl_node_impl (unsigned int lvl, uintptr_t *np) : nlvl (lvl), next (np)
     {
     }
 
-  static sl_node_base* get (uintptr_t addr)
+  static sl_node_impl* get (uintptr_t addr)
     {
-      return ((sl_node_base *)(addr & ~SL_XBIT));
+      return ((sl_node_impl *)(addr & ~SL_XBIT));
     }
 
   static uintptr_t& at (uintptr_t addr, unsigned int lvl)
     {
-      return (sl_node_base::get(addr)->next[lvl]);
+      return (sl_node_impl::get(addr)->next[lvl]);
     }
 
   static uintptr_t* plen (uintptr_t addr)
     {
-      return (sl_node_base::get(addr)->next - 1);
+      return (sl_node_impl::get(addr)->next - 1);
     }
 
   static void bump (uintptr_t *lenp, intptr_t off)
     {
       xatomic_add (lenp, off + off);
-    }
-
-  static sl_node_base* make_root (unsigned int depth)
-    {
-      size_t uptrs;
-      uintptr_t *raw = alloc_uptrs<Alloc> (sizeof (sl_node_base),
-                                           depth + 1, &uptrs);
-      memset (raw, 0, uptrs * sizeof (uintptr_t));
-      auto ret = (sl_node_base *)raw;
-      uintptr_t *endp = (uintptr_t *)(ret + 1);
-      return (new (ret) sl_node_base (depth, endp + 1));
     }
 
   static unsigned int
@@ -110,6 +98,25 @@ struct alignas (uintptr_t) sl_node_base : public finalizable
 
           xatomic_spin_nop ();
         }
+    }
+};
+
+template <typename Alloc>
+struct alignas (uintptr_t) sl_node_base : public sl_node_impl
+{
+  sl_node_base (unsigned int lvl, uintptr_t *np) : sl_node_impl (lvl, np)
+    {
+    }
+
+  static sl_node_base* make_root (unsigned int depth)
+    {
+      size_t uptrs;
+      uintptr_t *raw = alloc_uptrs<Alloc> (sizeof (sl_node_base),
+                                           depth + 1, &uptrs);
+      memset (raw, 0, uptrs * sizeof (uintptr_t));
+      auto ret = (sl_node_base<Alloc> *)raw;
+      uintptr_t *endp = (uintptr_t *)(ret + 1);
+      return (new (ret) sl_node_base (depth, endp + 1));
     }
 
   void safe_destroy ()
@@ -521,7 +528,7 @@ struct skip_list
       if (it == 0)
         return (it);
 
-      detail::sl_node_base<Nalloc> *nodep = _Node::get (it);
+      auto *nodep = _Node::get (it);
       uintptr_t qx = 0, next = 0;
 
       for (int lvl = nodep->nlvl - 1; lvl >= 0; --lvl)

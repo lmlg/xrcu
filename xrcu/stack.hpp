@@ -144,9 +144,7 @@ struct stack
 
       void safe_destroy ()
         {
-          auto runp = this->next;
-          stack<T, Alloc>::_Destroy (this);
-          stack<T, Alloc>::_Clean_nodes (runp);
+          stack<T, Alloc>::_Clean_nodes (this);
         }
     };
 

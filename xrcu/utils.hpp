@@ -161,6 +161,19 @@ struct wrapped_traits<false, T, Alloc>
     }
 };
 
+static inline size_t upsize (size_t x)
+{
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  if constexpr (sizeof (x) > sizeof (uint32_t))
+    x |= x >> 32;
+
+  return (x + 1);
+}
+
 template <typename I1, typename I2>
 bool sequence_lt (I1 x1, I1 x2, I2 y1, I2 y2)
 {

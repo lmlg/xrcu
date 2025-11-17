@@ -182,6 +182,7 @@ struct tl_data : public td_link
         }
 
       this->fin_objs = nullptr;
+      this->init ();
       this->n_fins = 0;
       this->must_flush = false;
       return (true);

@@ -18,11 +18,10 @@
 #ifndef __XRCU_HASHTABLE_HPP__
 #define __XRCU_HASHTABLE_HPP__   1
 
-#include "xrcu.hpp"
-#include "xatomic.hpp"
 #include "lwlock.hpp"
 #include "memory.hpp"
 #include "utils.hpp"
+#include "xatomic.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -102,23 +101,29 @@ secondary_hash (size_t hval)
 
 extern size_t find_hsize (size_t size, float ldf, size_t& pidx);
 
-template <typename Alloc>
 struct ht_sentry
 {
   lwlock *lock;
   uintptr_t xbit;
-  ht_vector<Alloc> *vector = nullptr;
+  uintptr_t *data = nullptr;
+  size_t size;
 
   ht_sentry (lwlock *lp, uintptr_t xb) : lock (lp), xbit (~xb)
     {
       this->lock->acquire ();
     }
 
+  void set (uintptr_t *dp, size_t sz)
+    {
+      this->data = dp;
+      this->size = sz;
+    }
+
   ~ht_sentry ()
     {
-      if (this->vector)
-        for (size_t i = table_idx (0) + 1; i < this->vector->size (); i += 2)
-          xatomic_and (&this->vector->data[i], this->xbit);
+      if (this->data)
+        for (size_t i = table_idx (0) + 1; i < this->size; i += 2)
+          xatomic_and (&this->data[i], this->xbit);
 
       this->lock->release ();
     }
@@ -406,7 +411,7 @@ struct hash_table
 
   void _Rehash ()
     {
-      detail::ht_sentry<Nalloc> s (&this->lock, val_traits::XBIT);
+      detail::ht_sentry s (&this->lock, val_traits::XBIT);
 
       if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
         {
@@ -416,7 +421,7 @@ struct hash_table
                                                      key_traits::FREE,
                                                      val_traits::FREE);
 
-          s.vector = old;
+          s.set (old->data, old->size ());
 
           for (size_t i = detail::table_idx (0); i < old->size (); i += 2)
             {
@@ -433,7 +438,7 @@ struct hash_table
                 }
             }
 
-          s.vector = nullptr;
+          s.set (nullptr, 0);
 
           np->nelems.store (nelem, std::memory_order_relaxed);
           this->grow_limit.store ((intptr_t)(np->entries * this->loadf) -
@@ -837,8 +842,8 @@ struct hash_table
       if (this == &right)
         return;
 
-      detail::ht_sentry<Nalloc> s1 (&this->lock, ~val_traits::XBIT);
-      detail::ht_sentry<Nalloc> s2 (&right.lock, ~val_traits::XBIT);
+      detail::ht_sentry s1 (&this->lock, ~val_traits::XBIT);
+      detail::ht_sentry s2 (&right.lock, ~val_traits::XBIT);
 
       // Prevent further insertions (still allows deletions).
       this->grow_limit.store (0, std::memory_order_release);
