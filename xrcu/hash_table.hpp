@@ -215,6 +215,43 @@ struct ht_inserter
   void free (uintptr_t) {}
 };
 
+template <typename Fn, typename Vtraits>
+struct ht_updater
+{
+  Fn fct;
+
+  ht_updater (Fn f) : fct (f)
+    {
+    }
+
+  template <typename ...Args>
+  uintptr_t call0 (Args ...args)
+    { // Call function with default-constructed value and arguments.
+      auto tmp = (typename Vtraits::value_type ());
+      auto&& rv = this->fct (tmp, std::forward<Args>(args)...);
+      return (Vtraits::make (rv));
+    }
+
+  template <typename ...Args>
+  uintptr_t call1 (uintptr_t x, Args ...args)
+    { // Call function with current value and arguments.
+      auto&& tmp = Vtraits::get (x);
+      auto&& rv = this->fct (tmp, std::forward<Args>(args)...);
+
+      /*
+       * If the returned value is equal to the current one, don't
+       * bother creating a new value and just returned what was stored.
+       */
+      return (Vtraits::XBIT == 1 && &rv == &tmp ?
+              x : Vtraits::make (rv));
+    }
+
+  void free (uintptr_t x)
+    {
+      Vtraits::free (x);
+    }
+};
+
 template <typename Traits>
 struct ht_key_inserter
 {
@@ -553,7 +590,7 @@ struct hash_table
               if (tmp != val_traits::DELT && tmp != val_traits::FREE &&
                   (tmp & val_traits::XBIT) == 0)
                 {
-                  uintptr_t v = f.call1 (tmp, args...);
+                  uintptr_t v = f.call1 (tmp, std::forward<Args>(args)...);
                   if (v == tmp || xatomic_cas_bool (ep + idx + 1, tmp, v))
                     {
                       if (v != tmp)
@@ -569,14 +606,16 @@ struct hash_table
             {
               ki.set (key);
 
-              /* NOTE: If we fail here, then the growth threshold will end up
+              /*
+               * NOTE: If we fail here, then the growth threshold will end up
                * too small. This simply means that we may have to rehash sooner
                * than absolutely necessary, which is harmless. On the other
                * hand, we must NOT try to reincrement the limit back, because
                * it risks ending up too big, which can be harmful if, for
-               * example, a rehash is triggered before the increment. */
+               * example, a rehash is triggered before the increment.
+               */
 
-              uintptr_t v = f.call0 (args...);
+              uintptr_t v = f.call0 (std::forward<Args>(args)...);
 #ifdef XRCU_HAVE_XATOMIC_DCAS
               if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
                                      val_traits::FREE, ki.slot, v))
@@ -614,40 +653,11 @@ struct hash_table
         }
     }
 
-  template <typename Fn, typename Vtraits>
-  struct _Updater
-    {
-      Fn fct;
-
-      _Updater (Fn f) : fct (f) {}
-
-      template <typename ...Args>
-      uintptr_t call0 (Args ...args)
-        { // Call function with default-constructed value and arguments.
-          auto tmp = (typename Vtraits::value_type ());
-          auto&& rv = this->fct (tmp, std::forward<Args>(args)...);
-          return (Vtraits::make (rv));
-        }
-
-      template <typename ...Args>
-      uintptr_t call1 (uintptr_t x, Args ...args)
-        { // Call function with stored value and arguments.
-          auto&& tmp = Vtraits::get (x);
-          auto&& rv = this->fct (tmp, std::forward<Args>(args)...);
-          return (Vtraits::XBIT == 1 && &rv == &tmp ?
-                  x : Vtraits::make (rv));
-        }
-
-      void free (uintptr_t x)
-        {
-          Vtraits::free (x);
-        }
-    };
-
   template <typename Fn, typename ...Args>
   bool update (const KeyT& key, Fn f, Args... args)
     {
-      return (this->_Upsert (key, _Updater<Fn, val_traits> (f), args...));
+      return (this->_Upsert (key, detail::ht_updater<Fn, val_traits> (f),
+                             std::forward<Args>(args)...));
     }
 
   bool _Erase (const KeyT& key, std::optional<ValT> *outp = nullptr)
