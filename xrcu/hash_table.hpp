@@ -129,10 +129,11 @@ struct ht_sentry
     }
 };
 
-template <typename Ktraits, typename Vtraits, typename Alloc>
+template <typename Ktraits, typename Vtraits>
 struct ht_iter : public cs_guard
 {
-  const ht_vector<Alloc> *vec = nullptr;
+  const uintptr_t *data = nullptr;
+  size_t nmax;
   size_t idx = 0;
   uintptr_t c_key;
   uintptr_t c_val;
@@ -140,9 +141,10 @@ struct ht_iter : public cs_guard
 
   typedef std::forward_iterator_tag iterator_category;
 
-  void _Init (const ht_vector<Alloc> *vp)
+  void _Init (const uintptr_t *dp, size_t n)
     {
-      this->vec = vp;
+      this->data = dp;
+      this->nmax = n;
       this->_Adv ();
     }
 
@@ -150,17 +152,17 @@ struct ht_iter : public cs_guard
     {
     }
 
-  ht_iter (const ht_iter<Ktraits, Vtraits, Alloc>& right) :
-      vec (right.vec), idx (right.idx), c_key (right.c_key),
-      c_val (right.c_val), valid (right.valid)
+  ht_iter (const ht_iter<Ktraits, Vtraits>& right) :
+      data (right.data), nmax (right.nmax), idx (right.idx),
+      c_key (right.c_key), c_val (right.c_val), valid (right.valid)
     {
     }
 
-  ht_iter (ht_iter<Ktraits, Vtraits, Alloc>&& right) :
-      vec (right.vec), idx (right.idx), c_key (right.c_key),
-      c_val (right.c_val), valid (right.valid)
+  ht_iter (ht_iter<Ktraits, Vtraits>&& right) :
+      data (right.data), nmax (right.nmax), idx (right.idx),
+      c_key (right.c_key), c_val (right.c_val), valid (right.valid)
     {
-      right.vec = nullptr;
+      right.data = nullptr;
       right.idx = 0;
       right.valid = false;
     }
@@ -168,10 +170,10 @@ struct ht_iter : public cs_guard
   void _Adv ()
     {
       this->valid = false;
-      for (; this->idx < this->vec->size (); )
+      while (this->idx < this->nmax)
         {
-          this->c_key = this->vec->data[this->idx + 0];
-          this->c_val = this->vec->data[this->idx + 1] & ~Vtraits::XBIT;
+          this->c_key = this->data[this->idx + 0];
+          this->c_val = this->data[this->idx + 1] & ~Vtraits::XBIT;
 
           this->idx += 2;
           if ((this->c_key & ~Ktraits::XBIT) != Ktraits::FREE &&
@@ -183,13 +185,13 @@ struct ht_iter : public cs_guard
         }
     }
 
-  bool operator== (const ht_iter<Ktraits, Vtraits, Alloc>& right) const
+  bool operator== (const ht_iter<Ktraits, Vtraits>& right) const
     {
       return ((!this->valid && !right.valid) ||
-              (this->vec == right.vec && this->idx == right.idx));
+              (this->data == right.data && this->idx == right.idx));
     }
 
-  bool operator!= (const ht_iter<Ktraits, Vtraits, Alloc>& right)
+  bool operator!= (const ht_iter<Ktraits, Vtraits>& right)
     {
       return (!(*this == right));
     }
@@ -390,7 +392,7 @@ struct hash_table
       if (k == key_traits::FREE)
         return (put_p ? (found = true, vidx) : (size_t)-1);
       else if (k != key_traits::DELT &&
-          this->eqfn (key_traits::get (k), key))
+               this->eqfn (key_traits::get (k), key))
         return (vidx);
 
       for (size_t initial = idx, sec = detail::secondary_hash (code) ; ; )
@@ -407,7 +409,7 @@ struct hash_table
           if (k == key_traits::FREE)
             return (put_p ? (found = true, vidx) : (size_t)-1);
           else if (k != key_traits::DELT &&
-              this->eqfn (key_traits::get (k), key))
+                   this->eqfn (key_traits::get (k), key))
             return (vidx);
         }
     }
@@ -701,9 +703,9 @@ struct hash_table
       return (ret);
     }
 
-  struct iterator : public detail::ht_iter<key_traits, val_traits, Nalloc>
+  struct iterator : public detail::ht_iter<key_traits, val_traits>
     {
-      typedef detail::ht_iter<key_traits, val_traits, Nalloc> base_type;
+      typedef detail::ht_iter<key_traits, val_traits> base_type;
 
       iterator () : base_type ()
         {
@@ -711,7 +713,7 @@ struct hash_table
 
       iterator (const self_type& self) : base_type ()
         {
-          this->_Init (self.vec);
+          this->_Init (self.vec->data, self.vec->size ());
         }
 
       iterator (const iterator& right) : base_type (right)
