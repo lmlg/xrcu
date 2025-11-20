@@ -213,6 +213,37 @@ struct ht_inserter
   void free (uintptr_t) {}
 };
 
+template <typename Traits>
+struct ht_key_inserter
+{
+  bool valid = false;
+  uintptr_t slot;
+
+  template <typename T>
+  void set (const T& x)
+    {
+      if (!this->valid)
+        {
+          this->slot = Traits::make (x);
+          this->valid = true;
+        }
+    }
+
+  void clear ()
+    {
+      this->valid = false;
+    }
+
+  ~ht_key_inserter ()
+    {
+      if (!this->valid)
+        return;
+
+      Traits::free (this->slot);
+      this->valid = false;
+    }
+};
+
 inline intptr_t
 compute_fsize (float loadf, size_t entries)
 {
@@ -412,55 +443,55 @@ struct hash_table
   void _Rehash ()
     {
       detail::ht_sentry s (&this->lock, val_traits::XBIT);
+      if (!(this->grow_limit.load (std::memory_order_relaxed) <= 0))
+        return;
 
-      if (this->grow_limit.load (std::memory_order_relaxed) <= 0)
+      auto old = this->vec;
+      size_t nelem = 0;
+      auto np = detail::ht_vector<Nalloc>::make (old->pidx + 1,
+                                                 key_traits::FREE,
+                                                 val_traits::FREE);
+
+      s.set (old->data, old->size ());
+
+      for (size_t i = detail::table_idx (0); i < old->size (); i += 2)
         {
-          auto old = this->vec;
-          size_t nelem = 0;
-          auto np = detail::ht_vector<Nalloc>::make (old->pidx + 1,
-                                                     key_traits::FREE,
-                                                     val_traits::FREE);
+          uintptr_t key = old->data[i];
+          uintptr_t val = xatomic_or (&old->data[i + 1], val_traits::XBIT);
 
-          s.set (old->data, old->size ());
-
-          for (size_t i = detail::table_idx (0); i < old->size (); i += 2)
+          if (key != key_traits::FREE && key != key_traits::DELT &&
+              val != val_traits::FREE && val != val_traits::DELT)
             {
-              uintptr_t key = old->data[i];
-              uintptr_t val = xatomic_or (&old->data[i + 1], val_traits::XBIT);
-
-              if (key != key_traits::FREE && key != key_traits::DELT &&
-                  val != val_traits::FREE && val != val_traits::DELT)
-                {
-                  size_t nidx = this->_Gprobe (key, np);
-                  np->data[nidx + 0] = key;
+              size_t nidx = this->_Gprobe (key, np);
+              np->data[nidx + 0] = key;
                   np->data[nidx + 1] = val;
-                  ++nelem;
-                }
+              ++nelem;
             }
-
-          s.set (nullptr, 0);
-
-          np->nelems.store (nelem, std::memory_order_relaxed);
-          this->grow_limit.store ((intptr_t)(np->entries * this->loadf) -
-                                  nelem, std::memory_order_relaxed);
-          std::atomic_thread_fence (std::memory_order_release);
-
-          /*
-           * At this point, another thread may decrement the growth limit
-           * from the wrong vector. That's fine, it just means we'll move
-           * the table sooner than necessary.
-           */
-          this->vec = np;
-          finalize (old);
         }
+
+      s.set (nullptr, 0);
+
+      np->nelems.store (nelem, std::memory_order_relaxed);
+      this->grow_limit.store ((intptr_t)(np->entries * this->loadf) -
+                              nelem, std::memory_order_relaxed);
+      std::atomic_thread_fence (std::memory_order_release);
+
+      /*
+       * At this point, another thread may decrement the growth limit
+       * from the wrong vector. That's fine, it just means we'll move
+       * the table sooner than necessary.
+       */
+      this->vec = np;
+      finalize (old);
     }
 
   uintptr_t _Find (const KeyT& key) const
     {
       auto vp = this->vec;
       size_t idx = this->_Probe (key, vp, false);
-      return (idx == (size_t)-1 ? val_traits::DELT :
-        vp->data[idx + 1] & ~val_traits::XBIT);
+      return (idx == (size_t)-1 ?
+              val_traits::DELT :
+              vp->data[idx + 1] & ~val_traits::XBIT);
     }
 
   std::optional<ValT> find (const KeyT& key) const
@@ -502,8 +533,9 @@ struct hash_table
     }
 
   template <typename Fn, typename ...Args>
-  bool _Upsert (uintptr_t k, const KeyT& key, Fn f, Args... args)
+  bool _Upsert (const KeyT& key, Fn f, Args... args)
     {
+      detail::ht_key_inserter<key_traits> ki;
       cs_guard g;
 
       while (true)
@@ -520,10 +552,8 @@ struct hash_table
                   (tmp & val_traits::XBIT) == 0)
                 {
                   uintptr_t v = f.call1 (tmp, args...);
-                  if (v == tmp ||
-                      xatomic_cas_bool (ep + idx + 1, tmp, v))
+                  if (v == tmp || xatomic_cas_bool (ep + idx + 1, tmp, v))
                     {
-                      key_traits::free (k);
                       if (v != tmp)
                         val_traits::destroy (tmp);
                       return (found);
@@ -535,6 +565,8 @@ struct hash_table
             }
           else if (this->_Decr_limit ())
             {
+              ki.set (key);
+
               /* NOTE: If we fail here, then the growth threshold will end up
                * too small. This simply means that we may have to rehash sooner
                * than absolutely necessary, which is harmless. On the other
@@ -545,12 +577,13 @@ struct hash_table
               uintptr_t v = f.call0 (args...);
 #ifdef XRCU_HAVE_XATOMIC_DCAS
               if (xatomic_dcas_bool (&ep[idx], key_traits::FREE,
-                                     val_traits::FREE, k, v))
+                                     val_traits::FREE, ki.slot, v))
 #else
-              if (xatomic_cas_bool (ep + idx + 0, key_traits::FREE, k) &&
+              if (xatomic_cas_bool (ep + idx + 0, key_traits::FREE, ki.slot) &&
                   xatomic_cas_bool (ep + idx + 1, val_traits::FREE, v))
 #endif
                 {
+                  ki.clear ();   // Take ownership of the key.
                   vp->nelems.fetch_add (1, std::memory_order_acq_rel);
                   return (found);
                 }
@@ -566,19 +599,15 @@ struct hash_table
 
   bool insert (const KeyT& key, const ValT& val)
     {
-      uintptr_t k = key_traits::make (key), v = val_traits::XBIT;
+      uintptr_t v = val_traits::make (val);
 
       try
         {
-          v = val_traits::make (val);
-          return (this->_Upsert (k, key, detail::ht_inserter (v)));
+          return (this->_Upsert (key, detail::ht_inserter (v)));
         }
       catch (...)
         {
-          key_traits::free (k);
-          if (v != val_traits::XBIT)
-            val_traits::free (v);
-
+          val_traits::free (v);
           throw;
         }
     }
@@ -594,7 +623,7 @@ struct hash_table
       uintptr_t call0 (Args ...args)
         { // Call function with default-constructed value and arguments.
           auto tmp = (typename Vtraits::value_type ());
-          auto&& rv = this->fct (tmp, args...);
+          auto&& rv = this->fct (tmp, std::forward<Args>(args)...);
           return (Vtraits::make (rv));
         }
 
@@ -602,7 +631,7 @@ struct hash_table
       uintptr_t call1 (uintptr_t x, Args ...args)
         { // Call function with stored value and arguments.
           auto&& tmp = Vtraits::get (x);
-          auto&& rv = this->fct (tmp, args...);
+          auto&& rv = this->fct (tmp, std::forward<Args>(args)...);
           return (Vtraits::XBIT == 1 && &rv == &tmp ?
                   x : Vtraits::make (rv));
         }
@@ -616,18 +645,7 @@ struct hash_table
   template <typename Fn, typename ...Args>
   bool update (const KeyT& key, Fn f, Args... args)
     {
-      uintptr_t k = key_traits::make (key);
-
-      try
-        {
-          return (this->_Upsert (k, key,
-                                 _Updater<Fn, val_traits> (f), args...));
-        }
-      catch (...)
-        {
-          key_traits::free (k);
-          throw;
-        }
+      return (this->_Upsert (key, _Updater<Fn, val_traits> (f), args...));
     }
 
   bool _Erase (const KeyT& key, std::optional<ValT> *outp = nullptr)
