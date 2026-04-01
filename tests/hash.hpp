@@ -3,9 +3,12 @@
 
 #include "xrcu/hash_table.hpp"
 #include "utils.hpp"
-#include <thread>
+
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <random>
+#include <thread>
 
 typedef xrcu::hash_table<int, std::string, std::equal_to<int>,
                          std::hash<int>, test_allocator<int>> table_t;
@@ -208,7 +211,11 @@ mt_mutator (table_t *tx)
   for (int i = 0; i < MUTATOR_KEY_SIZE; ++i)
     keys[i] = i;
 
-  std::random_shuffle (keys, keys + MUTATOR_KEY_SIZE);
+  unsigned int seed = std::chrono::system_clock::now().
+                      time_since_epoch().count();
+
+  std::shuffle (keys, keys + MUTATOR_KEY_SIZE,
+                std::default_random_engine (seed));
   for (int i = 0; i < MUTATOR_KEY_SIZE; ++i)
     if (!tx->insert (keys[i], std::string ("")))
       tx->erase (keys[i]);
