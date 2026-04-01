@@ -70,7 +70,7 @@ struct alignas (uintptr_t) ht_vector : public finalizable
         ++p;
 #else
       auto raw = alloc_uptrs<Alloc> (sizeof (ht_vector<Alloc>), tsize);
-      uintptr_t *p = (uintptr_t *)(ret + 1);
+      uintptr_t *p = (uintptr_t *)((char *)raw + sizeof (ht_vector<Alloc>));
 #endif
       auto ret = new ((ht_vector<Alloc> *)raw) ht_vector<Alloc> (p);
       for (size_t i = 0; i < tsize; i += 2)
@@ -191,7 +191,7 @@ struct ht_iter : public cs_guard
               (this->data == right.data && this->idx == right.idx));
     }
 
-  bool operator!= (const ht_iter<Ktraits, Vtraits>& right)
+  bool operator!= (const ht_iter<Ktraits, Vtraits>& right) const
     {
       return (!(*this == right));
     }
@@ -854,7 +854,8 @@ struct hash_table
 
   self_type& operator= (const self_type& right)
     {
-      this->assign (right.begin (), right.end ());
+      if (this != &right)
+        this->assign (right.begin (), right.end ());
       return (*this);
     }
 
