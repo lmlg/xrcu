@@ -183,7 +183,7 @@ struct queue
           it.qdp = nullptr;
         }
 
-      void _Adv ()
+      void _Adv () noexcept
         {
           for (; this->idx < this->qdp->cap; ++this->idx)
             {
@@ -202,14 +202,14 @@ struct queue
           return (val_traits::get (this->c_val));
         }
 
-      iterator& operator++ ()
+      iterator& operator++ () noexcept
         {
           ++this->idx;
           this->_Adv ();
           return (*this);
         }
 
-      iterator operator++ (int)
+      iterator operator++ (int) noexcept
         {
           iterator rv { *this };
           ++*this;
@@ -319,7 +319,7 @@ struct queue
           prev = xatomic_or (&qdp->ptrs[ix], val_traits::XBIT);
 
           if (prev == val_traits::DELT)
-            {  // Another thread deleted this entry - Retry.
+            { // Another thread deleted this entry - Retry.
               xatomic_spin_nop ();
               continue;
             }
@@ -545,10 +545,8 @@ struct queue
 
   queue<T, Alloc>& operator= (const queue<T, Alloc>& right)
     {
-      if (this == &right)
-        return (*this);
-
-      this->assign (right.begin (), right.end ());
+      if (this != &right)
+        this->assign (right.begin (), right.end ());
       return (*this);
     }
 

@@ -841,7 +841,7 @@ struct hash_table
   template <typename Iter>
   void assign (Iter first, Iter last)
     {
-      self_type tmp (first, last, 0, this->loadf);
+      self_type tmp (first, last, this->loadf, this->eqfn, this->hashfn);
       this->_Assign_vector (tmp.vec,
                             tmp.grow_limit.load (std::memory_order_relaxed));
       tmp.vec = nullptr;

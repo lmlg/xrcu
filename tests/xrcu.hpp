@@ -53,6 +53,21 @@ void test_xrcu ()
   ASSERT (G_CNT.load () == 0);
   xrcu::exit_cs ();
   ASSERT (G_CNT.load () == 1);
+
+  {
+    int major = -1, minor = -1;
+    xrcu::library_version (major, minor);
+    ASSERT (major >= 0);
+    ASSERT (minor > 0);
+  }
+
+  ASSERT (xrcu::ctz (1u) == 0);
+  ASSERT (xrcu::ctz (2u) == 1);
+  ASSERT (xrcu::ctz (4u) == 2);
+  ASSERT (xrcu::ctz (8u) == 3);
+  ASSERT (xrcu::ctz (12u) == 2);
+  ASSERT (xrcu::ctz (16u) == 4);
+  ASSERT (xrcu::ctz (0x80000000u) == 31);
 }
 
 void test_xrcu_order ()
@@ -90,7 +105,7 @@ test_module xrcu_tests
   "xrcu",
   {
     { "API", test_xrcu },
-    { "API with multiple threads", test_xrcu_mt }
+    { "API with multiple threads", test_xrcu_mt },
   }
 };
 

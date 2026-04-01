@@ -35,6 +35,11 @@ void test_single_threaded ()
   ASSERT (tx.size () == 3);
   ASSERT (!tx.empty ());
   ASSERT (tx.find (-2, std::string ("")) == "def");
+  ASSERT (tx.load_factor () > 0 && tx.load_factor () <= 1);
+
+  float prevf = tx.load_factor (0.6f);
+  ASSERT (prevf > 0 && prevf <= 1);
+  ASSERT (tx.load_factor () == 0.6f);
 
   for (int i = 0; i < 4000; ++i)
     tx.insert (i, mkstr (i));
@@ -79,6 +84,52 @@ void test_single_threaded ()
   ASSERT (tx.size () != 0);
 
   ASSERT (!xrcu::in_cs ());
+
+  {
+    table_t t1 { { 1, std::string ("a") }, { 2, std::string ("b") } };
+    table_t t2 { { 1, std::string ("a") }, { 2, std::string ("b") } };
+    table_t t3 { { 1, std::string ("a") }, { 3, std::string ("c") } };
+
+    ASSERT (t1 == t2);
+    ASSERT (!(t1 != t2));
+    ASSERT (t1 != t3);
+    ASSERT (!(t1 == t3));
+
+    t3 = t1;
+    ASSERT (t1 == t3);
+    t3 = std::move (t2);
+
+    new (&t2) table_t (t3);
+    ASSERT (t2 == t3);
+  }
+}
+
+static void
+mt_updater (table_t *tx, int index)
+{
+  for (int i = 0; i < INSERTER_LOOPS; ++i)
+    {
+      int key = (index * INSERTER_LOOPS + i) % MUTATOR_KEY_SIZE;
+      tx->update (key, [](const auto& s) -> std::string { return (s + '!'); });
+    }
+}
+
+void test_update_mt ()
+{
+  table_t tx;
+  for (int i = 0; i < MUTATOR_KEY_SIZE; ++i)
+    tx.insert (i, mkstr (i));
+
+  std::vector<std::thread> thrs;
+  for (int i = 0; i < INSERTER_THREADS; ++i)
+    thrs.push_back (std::thread (mt_updater, &tx, i));
+
+  for (auto& thr : thrs)
+    thr.join ();
+
+  ASSERT (tx.size () == MUTATOR_KEY_SIZE);
+  for (const auto& p : tx)
+    ASSERT (p.second.find ('!') != std::string::npos);
 }
 
 static void
@@ -265,6 +316,7 @@ test_module hash_table_tests
     { "multi threaded erasures", test_erase_mt },
     { "multi threaded overlapped erasures", test_erase_mt_ov },
     { "multi threaded mutations", test_mutate_mt },
+    { "multi threaded updates", test_update_mt },
     { "iteration during modifications", test_iter }
   }
 };

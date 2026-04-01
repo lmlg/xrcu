@@ -563,7 +563,7 @@ namespace std
 template <typename T, typename Alloc>
 void swap (xrcu::stack<T, Alloc>& left, xrcu::stack<T, Alloc>& right)
 {
-  return (left.swap (right));
+  left.swap (right);
 }
 
 } // namespace std

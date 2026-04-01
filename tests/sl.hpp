@@ -63,6 +63,17 @@ void test_single_threaded ()
   }
 
   ASSERT (!xrcu::in_cs ());
+
+  {
+    sklist_t s3 { std::move (sl) };
+
+    new (&sl) sklist_t (s3);
+    ASSERT (sl == s3);
+
+    sl.insert (std::string ("abcd"));
+    ASSERT (sl < s3);
+    ASSERT (s3 > sl);
+  }
 }
 
 static void

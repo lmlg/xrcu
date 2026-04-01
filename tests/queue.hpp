@@ -80,6 +80,62 @@ void test_single_threaded ()
 
   q.push (mkstr (50));
   ASSERT (q >= q2);
+
+  {
+    queue_t q3;
+    q3.emplace ("hello");
+    q3.emplace ("world");
+
+    ASSERT (q3.size () == 2);
+    ASSERT (*q3.pop () == "hello");
+    ASSERT (*q3.pop () == "world");
+    ASSERT (q3.empty ());
+  }
+}
+
+void test_iter ()
+{
+  queue_t q;
+  for (int i = 0; i < 5; ++i)
+    q.push (mkstr (i));
+
+  auto it = q.cbegin ();
+
+  for (int i = 10; i < 100; ++i)
+    q.push (mkstr (i));
+
+  int c = 0;
+  for (; it != q.end (); ++it, ++c)
+    ;
+
+  ASSERT (c >= 5);
+}
+
+static void
+mt_popper (queue_t *qp, std::atomic<int> *cnt)
+{
+  for (int i = 0; i < INSERTER_LOOPS; ++i)
+    if (qp->pop ().has_value ())
+      cnt->fetch_add (1);
+}
+
+void test_pop_mt ()
+{
+  queue_t q;
+  std::atomic<int> popped { 0 };
+  std::vector<std::thread> thrs;
+
+  for (int i = 0; i < INSERTER_THREADS * INSERTER_LOOPS; ++i)
+    q.push (mkstr (i));
+
+  for (int i = 0; i < INSERTER_THREADS; ++i)
+    thrs.push_back (std::thread (mt_popper, &q, &popped));
+
+  for (auto& thr : thrs)
+    thr.join ();
+
+  ASSERT ((size_t)popped.load () + q.size () ==
+          (size_t)(INSERTER_THREADS * INSERTER_LOOPS));
 }
 
 static void
@@ -108,10 +164,12 @@ test_module queue_tests
   "queue",
   {
     { "API in a single thread", test_single_threaded },
-    { "multi threaded pushes", test_push_mt }
+    { "iteration during modifications", test_iter },
+    { "multi threaded pushes", test_push_mt },
+    { "multi threaded pops", test_pop_mt }
   }
 };
 
-}
+} // namespace q_test
 
 #endif

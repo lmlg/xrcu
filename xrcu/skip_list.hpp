@@ -320,7 +320,7 @@ struct skip_list
           return (&**this);
         }
 
-      iterator& operator= (const iterator& right)
+      iterator& operator= (const iterator& right) noexcept
         {
           this->node = right.node;
           return (*this);
@@ -603,8 +603,8 @@ struct skip_list
   size_t size () const
     {
       cs_guard g;
-      uintptr_t *p = this->head.load (std::memory_order_relaxed)->next - 1;
-      return (*p >> 1);
+      auto nx = this->head.load (std::memory_order_relaxed);
+      return (nx ? (nx->next[-1] >> 1) : 0);
     }
 
   size_t max_size () const
@@ -664,7 +664,8 @@ struct skip_list
 
   _Self& operator= (const _Self& right)
     {
-      this->assign (right.begin (), right.end ());
+      if (this != &right)
+        this->assign (right.begin (), right.end ());
       return (*this);
     }
 
@@ -673,9 +674,10 @@ struct skip_list
       auto tp = right.head.load (std::memory_order_relaxed);
       this->_Fini_root<> (this->head.exchange (tp, std::memory_order_acq_rel));
       right.head.store (nullptr, std::memory_order_relaxed);
+      return (*this);
     }
 
-  void swap (_Self& right)
+  void swap (_Self& right) noexcept
     {
       if (this == &right)
         return;
@@ -699,11 +701,49 @@ struct skip_list
       xatomic_and (_Node::plen ((uintptr_t)lh), ~(uintptr_t)1);
     }
 
-  void clear ()
+  void clear () noexcept
     {
       auto xroot = _Node::make_root (this->max_depth);
       auto prev = this->head.exchange (xroot, std::memory_order_release);
       this->_Fini_root<> (prev);
+    }
+
+  template <typename T2, typename C2, typename A2>
+  bool operator== (const skip_list<T2, C2, A2>& right) const
+    {
+      return (detail::sequence_eq (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
+    }
+
+  template <typename T2, typename C2, typename A2>
+  bool operator!= (const skip_list<T2, C2, A2>& right) const
+    {
+      return (!(*this == right));
+    }
+
+  template <typename T2, typename C2, typename A2>
+  bool operator< (const skip_list<T2, C2, A2>& right) const
+    {
+      return (detail::sequence_lt (this->cbegin (), this->cend (),
+                                   right.cbegin (), right.cend ()));
+    }
+
+  template <typename T2, typename C2, typename A2>
+  bool operator> (const skip_list<T2, C2, A2>& right) const
+    {
+      return (right < *this);
+    }
+
+  template <typename T2, typename C2, typename A2>
+  bool operator<= (const skip_list<T2, C2, A2>& right) const
+    {
+      return (!(right < *this));
+    }
+
+  template <typename T2, typename C2, typename A2>
+  bool operator>= (const skip_list<T2, C2, A2>& right) const
+    {
+      return (!(*this < right));
     }
 
   ~skip_list ()
