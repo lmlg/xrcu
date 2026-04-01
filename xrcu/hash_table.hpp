@@ -158,7 +158,7 @@ struct ht_iter : public cs_guard
     {
     }
 
-  ht_iter (ht_iter<Ktraits, Vtraits>&& right) :
+  ht_iter (ht_iter<Ktraits, Vtraits>&& right) noexcept :
       data (right.data), nmax (right.nmax), idx (right.idx),
       c_key (right.c_key), c_val (right.c_val), valid (right.valid)
     {
@@ -386,7 +386,7 @@ struct hash_table
     {
     }
 
-  hash_table (self_type&& right)
+  hash_table (self_type&& right) noexcept
     {
       this->vec = right.vec;
       this->eqfn = right.eqfn;
@@ -538,7 +538,7 @@ struct hash_table
       cs_guard g;
       uintptr_t val = this->_Find (key);
       return (val == val_traits::DELT ?
-              std::optional<ValT> () :
+              std::nullopt :
               std::optional<ValT> (val_traits::get (val)));
     }
 
@@ -730,7 +730,7 @@ struct hash_table
         {
         }
 
-      iterator (iterator&& right) : base_type (std::move (right))
+      iterator (iterator&& right) noexcept : base_type (std::move (right))
         {
         }
 
@@ -858,7 +858,7 @@ struct hash_table
       return (*this);
     }
 
-  self_type& operator= (self_type&& right)
+  self_type& operator= (self_type&& right) noexcept
     {
       this->_Assign_vector (right.vec,
                             right.grow_limit.load (std::memory_order_relaxed));

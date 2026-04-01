@@ -177,7 +177,8 @@ struct queue
         {
         }
 
-      iterator (iterator&& it) : qdp (it.qdp), idx (it.idx), c_val (it.c_val)
+      iterator (iterator&& it) noexcept :
+          qdp (it.qdp), idx (it.idx), c_val (it.c_val)
         {
           it.qdp = nullptr;
         }
@@ -297,7 +298,7 @@ struct queue
     {
     }
 
-  queue (queue<T, Alloc>&& right)
+  queue (queue<T, Alloc>&& right) noexcept
     {
       this->_Set_data (right._Data ());
       right._Set_data (nullptr);
@@ -400,7 +401,7 @@ struct queue
 
           if (val == val_traits::DELT)
             // Queue is empty.
-            return (std::optional<T> ());
+            return (std::nullopt);
           else if (val != val_traits::XBIT)
             {
               val_traits::destroy (val);
@@ -424,7 +425,7 @@ struct queue
               continue;
             }
           else if (rv == val_traits::FREE)
-            return (std::optional<T> ());
+            return (std::nullopt);
           return (std::optional<T> (val_traits::get (rv)));
         }
     }
@@ -441,7 +442,7 @@ struct queue
               continue;
             }
           else if (rv == val_traits::FREE)
-            return (std::optional<T> ());
+            return (std::nullopt);
           return (std::optional<T> (val_traits::get (rv)));
         }
     }
@@ -589,7 +590,7 @@ struct queue
       return (!(*this < right));
     }
 
-  queue<T, Alloc>& operator= (queue<T, Alloc>&& right)
+  queue<T, Alloc>& operator= (queue<T, Alloc>&& right) noexcept
     {
       auto prev = this->impl.exchange (right._Data (),
                                        std::memory_order_acq_rel);

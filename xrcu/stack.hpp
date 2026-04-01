@@ -76,7 +76,7 @@ struct stack_iter_base : public cs_guard
     {
     }
 
-  stack_iter_base (stack_iter_base&& right) : runp (right.runp)
+  stack_iter_base (stack_iter_base&& right) noexcept : runp (right.runp)
     {
       right.runp = nullptr;
     }
@@ -245,7 +245,7 @@ struct stack
     {
     }
 
-  stack (stack<T, Alloc>&& right)
+  stack (stack<T, Alloc>&& right) noexcept
     {
       this->_Reset (right._Root ());
       right._Reset (nullptr);
@@ -255,13 +255,6 @@ struct stack
     {
       cs_guard g;
       detail::stack_node_base::push (this->hnode, _Stknode::alloc (value));
-    }
-
-  void push (T&& value)
-    {
-      cs_guard g;
-      detail::stack_node_base::push (this->hnode,
-                                     _Stknode::move (std::move (value)));
     }
 
   template <typename Iter>
@@ -323,12 +316,14 @@ struct stack
   template <typename T1, typename T2>
   void push (T1 first, T2 last)
     {
+      cs_guard g;
       this->_Push (first, last, typename std::is_integral<T1>::type ());
     }
 
   template <typename...Args>
   void emplace (Args&& ...args)
     {
+      cs_guard g;
       auto np = _Stknode::move (std::forward<Args>(args)...);
       detail::stack_node_base::push (this->hnode, np);
     }
@@ -339,7 +334,7 @@ struct stack
       auto node = detail::stack_node_base::pop (this->hnode);
 
       if (!node)
-        return (std::optional<T> ());
+        return (std::nullopt);
 
       std::optional<T> ret { ((node_type *)node)->value };
       finalize ((node_type *)node);
@@ -360,7 +355,7 @@ struct stack
     {
       cs_guard g;
       auto node = this->_Root ();
-      return (node ? std::optional<T> { node->value } : std::optional<T> ());
+      return (node ? std::optional<T> { node->value } : std::nullopt);
     }
 
   struct iterator : public detail::stack_iter_base
@@ -378,7 +373,8 @@ struct stack
         {
         }
 
-      iterator (iterator&& it) : detail::stack_iter_base (std::move (it))
+      iterator (iterator&& it) noexcept :
+          detail::stack_iter_base (std::move (it))
         {
         }
 
@@ -482,7 +478,7 @@ struct stack
       return (*this);
     }
 
-  stack<T, Alloc>& operator= (stack<T, Alloc>&& right)
+  stack<T, Alloc>& operator= (stack<T, Alloc>&& right) noexcept
     {
       this->swap (right);
       finalize (right._Root ());

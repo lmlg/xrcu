@@ -235,16 +235,16 @@ struct skip_list
     }
 
   template <typename Iter>
-  skip_list (Iter first, Iter last,
-      Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH)
+  skip_list (Iter first, Iter last, Cmp c = Cmp (),
+             unsigned int depth = detail::SL_MAX_DEPTH)
     {
       this->_Init (c, depth);
       for (; first != last; ++first)
         this->insert (*first);
     }
 
-  skip_list (std::initializer_list<T> lst,
-      Cmp c = Cmp (), unsigned int depth = detail::SL_MAX_DEPTH) :
+  skip_list (std::initializer_list<T> lst, Cmp c = Cmp (),
+             unsigned int depth = detail::SL_MAX_DEPTH) :
         skip_list (lst.begin (), lst.end (), c, depth)
     {
     }
@@ -253,7 +253,7 @@ struct skip_list
     {
     }
 
-  skip_list (_Self&& right)
+  skip_list (_Self&& right) noexcept
     {
       this->head.store (right.head.load (std::memory_order_relaxed),
                         std::memory_order_relaxed);
@@ -283,7 +283,7 @@ struct skip_list
         {
         }
 
-      iterator (iterator&& right) : node (right.node)
+      iterator (iterator&& right) noexcept : node (right.node)
         {
           right.node = 0;
         }
@@ -326,7 +326,7 @@ struct skip_list
           return (*this);
         }
 
-      iterator& operator= (iterator&& right)
+      iterator& operator= (iterator&& right) noexcept
         {
           this->node = right.node;
           right.node = 0;
@@ -352,8 +352,8 @@ struct skip_list
     }
 
   uintptr_t _Find_preds (int n, const T& key, int unlink,
-      uintptr_t *preds = nullptr, uintptr_t *succs = nullptr,
-      uintptr_t *outp = nullptr) const
+                         uintptr_t *preds = nullptr, uintptr_t *succs = nullptr,
+                         uintptr_t *outp = nullptr) const
     {
       bool got = false;
       uintptr_t pr = this->_Head (), it = 0;
@@ -420,7 +420,7 @@ struct skip_list
     {
       cs_guard g;
       uintptr_t rv = this->_Find_preds (0, key, detail::SL_UNLINK_NONE);
-      return (rv ? std::optional<T> (this->_Getk (rv)) : std::optional<T> ());
+      return (rv ? std::optional<T> (this->_Getk (rv)) : std::nullopt);
     }
 
   bool contains (const T& key) const
@@ -469,7 +469,7 @@ struct skip_list
 
       size_t n = _Node::rand_lvl (this->hi_water);
       if (this->_Find_preds (n, key, detail::SL_UNLINK_ASSIST,
-          preds, succs, &xroot) != 0)
+                             preds, succs, &xroot) != 0)
         return (false);
 
       uintptr_t nv = (uintptr_t)_Node::copy (n, key);
@@ -567,7 +567,7 @@ struct skip_list
     {
       cs_guard g;
       uintptr_t it = this->_Erase (key);
-      return (it ? std::optional<T> (_Self::_Getk (it)) : std::optional<T> ());
+      return (it ? std::optional<T> (_Self::_Getk (it)) : std::nullopt);
     }
 
   const_iterator cbegin () const
@@ -668,7 +668,7 @@ struct skip_list
       return (*this);
     }
 
-  _Self& operator= (_Self&& right)
+  _Self& operator= (_Self&& right) noexcept
     {
       auto tp = right.head.load (std::memory_order_relaxed);
       this->_Fini_root<> (this->head.exchange (tp, std::memory_order_acq_rel));
